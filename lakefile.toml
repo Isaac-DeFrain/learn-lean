@@ -1,6 +1,10 @@
 name = "LambdaCalculus"
 version = "0.1.0"
 defaultTargets = ["lambda-calculus"]
+builtinLint = true
+
+[[lean_lib]]
+name = "Errata"
 
 [[lean_exe]]
 name = "lambda-calculus"
