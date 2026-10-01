@@ -1,0 +1,17 @@
+/.lake/
+/build/
+result
+result-*
+*.olean
+*.ilean
+*.c
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*~
+.#*
+*.swp
+
+.direnv/
