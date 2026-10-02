@@ -17,12 +17,12 @@ def proj (u : Prop) (v : u → Prop) (w : Prop)
     (z : ∀ x : u, v x → w) (y : sig u v) : w :=
   y w z
 
-axiom u : Prop
-axiom v : u → Prop
-axiom w : Prop
-axiom x : u
-axiom y : v x
-axiom z : ∀ x : u, v x → w
+variable (u : Prop)
+variable (v : u → Prop)
+variable (w : Prop)
+variable (x : u)
+variable (y : v x)
+variable (z : ∀ x : u, v x → w)
 
 -- Sanity checks
 #check sig
