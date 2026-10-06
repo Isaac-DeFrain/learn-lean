@@ -1,32 +1,28 @@
 # Lambda Calculus and Combinators
 
-## A minor typo (pg. 198-199)
+[Lambda Calculus and Combinators](https://www.amazon.com/Lambda-Calculus-Combinators-Introduction-Roger-Hindley/dp/0521898854) pg. 212, last line, has the definition of the _existential quantifier projection operator_. It reads:
 
-The last equation on pg. 198 reads as follows:
+$$
+proj \equiv λu : *. \ λv : (u → *) . \ λw : * . \ λz : (Πx : u . \ v x → w) . \ λy : (Πx : u . \ v x) . \ y w z
+$$
 
-```lean
-u : *, p : (u → *) (λx : u . λy : p a . x) : (Πx : u . (p x → p x))
-```
+This definition is incorrect as it does not type check in [`lean4`](https://github.com/leanprover/lean4). I played around with it until I got it to satisfy the properties expressed on pg. 213, lines 10 and 12.
 
-I believe that the `a` should be an `x` and the following `x` should be a `y` and thus it should read:
+$$
+proj \ u v w z (D' u v x y) : w
+$$
 
-```lean
-u : *, p : (u → *) (λx : u . λy : p x . y) : (Πx : u . (p x → p x))
-```
+and
 
-## A more serious typo (pg. 212-213)
+$$
+proj \ u v w z (D' u v x y) =_β zxy
+$$
 
-The last line on pg. 212 has the definition of the existential quantifier projection operator, it reads:
+I propose the correction:
 
-```lean
-λu : *. λv : (u → *) . λw : * . λz : (Πx : u . v x → w) . λy : (Πx : u . v x) . y w z
-```
-
-I believe this definition is incorrect. It did not type check it in [`lean4`](https://github.com/leanprover/lean4) so I played around with the definition until I got it to satisfy the property expressed on pg. 213, lines 10 and 12. This is what I propose:
-
-```lean
-λu : * . λv : (u → *) . λw : * . λz : (Πx : u . v x → w) . λy : (Πw : * . (Πx : u . v x → w) → w) . y w z
-```
+$$
+proj \equiv λu : * . \ λv : (u → *) . \ λw : * . \ λz : (Πx : u . \ v x → w) . \ λy : (Πt : * . \ (Πx : u . \ v x → t) → t) . \ y w z
+$$
 
 [Errata](/Errata.lean) contains the relevant lean4 proofs.
 
