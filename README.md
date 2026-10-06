@@ -2,6 +2,8 @@
 
 ## Intro to lean
 
+[IntroToLean](/IntroToLean/) modules follow [Theorem Proving in Lean 4](https://lean-lang.org/theorem_proving_in_lean4/)
+
 ## Lambda Calculus and Combinators
 
 [Lambda Calculus and Combinators](https://www.amazon.com/Lambda-Calculus-Combinators-Introduction-Roger-Hindley/dp/0521898854) pg. 212, last line, has the definition of the _existential quantifier projection operator_. It reads:
