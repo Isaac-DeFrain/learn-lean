@@ -1,4 +1,4 @@
-import Errata
+import LambdaCalculus.Errata
 
 def main : IO Unit := do
-  IO.println "Lambda calculus and combinators"
+  IO.println "Errata checks OK"

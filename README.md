@@ -1,4 +1,8 @@
-# Lambda Calculus and Combinators
+# Learn Lean
+
+## Intro to lean
+
+## Lambda Calculus and Combinators
 
 [Lambda Calculus and Combinators](https://www.amazon.com/Lambda-Calculus-Combinators-Introduction-Roger-Hindley/dp/0521898854) pg. 212, last line, has the definition of the _existential quantifier projection operator_. It reads:
 
@@ -24,7 +28,7 @@ $$
 proj \equiv λu : * . \ λv : (u → *) . \ λw : * . \ λz : (Πx : u . \ v x → w) . \ λy : (Πt : * . \ (Πx : u . \ v x → t) → t) . \ y w z
 $$
 
-[Errata](/Errata.lean) contains the relevant lean4 proofs.
+[Errata](/LambdaCalculus/Errata.lean) contains the relevant lean4 proofs.
 
 ## Quickstart
 
@@ -33,5 +37,5 @@ Install lean4 via the [nix flake](./flake.nix).
 Execute the code / check the proofs:
 
 ```shell
-lake exe lambda-calculus
+lake exe errata
 ```

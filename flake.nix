@@ -1,5 +1,5 @@
 {
-  description = "Lambda calculus and combinators in Lean 4";
+  description = "Learn Lean 4 shell";
 
   inputs = {
     nixpkgs.follows = "lean4-nix/nixpkgs";

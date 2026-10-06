@@ -1,11 +1,16 @@
-name = "LambdaCalculus"
+name = "LearnLean"
 version = "0.1.0"
-defaultTargets = ["lambda-calculus"]
+defaultTargets = ["IntroToLean", "LambdaCalculus", "errata"]
 builtinLint = true
 
 [[lean_lib]]
-name = "Errata"
+name = "IntroToLean"
+globs = ["IntroToLean.+"]
+
+[[lean_lib]]
+name = "LambdaCalculus"
+globs = ["LambdaCalculus.+"]
 
 [[lean_exe]]
-name = "lambda-calculus"
+name = "errata"
 root = "Main"
