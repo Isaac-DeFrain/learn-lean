@@ -1,25 +1,22 @@
 -- Errata - Existential quantifier
 
--- These are term/combinator definitions (Prop-valued by design).
-set_option linter.defProp false
-
 -- Existential quantifier as a Church encoding
-def sig (u : Prop) (v : u → Prop) : Prop :=
-  ∀ w : Prop, (∀ x : u, v x → w) → w
+def sig (u : Type) (v : u → Type) : Type 1 :=
+  ∀ w : Type, (∀ x : u, v x → w) → w
 
 -- Existential introduction (pair/pack)
-def D' (u : Prop) (v : u → Prop) (x : u) (y : v x)
-    (w : Prop) (z : ∀ x : u, v x → w) : w :=
+def D' (u : Type) (v : u → Type) (x : u) (y : v x)
+    (w : Type) (z : ∀ x : u, v x → w) : w :=
   z x y
 
 -- Existential quantifier projection
-def proj (u : Prop) (v : u → Prop) (w : Prop)
+def proj (u : Type) (v : u → Type) (w : Type)
     (z : ∀ x : u, v x → w) (y : sig u v) : w :=
   y w z
 
-variable (u : Prop)
-variable (v : u → Prop)
-variable (w : Prop)
+variable (u : Type)
+variable (v : u → Type)
+variable (w : Type)
 variable (x : u)
 variable (y : v x)
 variable (z : ∀ x : u, v x → w)
@@ -34,7 +31,7 @@ variable (z : ∀ x : u, v x → w)
 #check proj u v
 
 -- pg. 213, line 10
-#check proj u v w z (D' u v x y)
+#check (proj u v w z (D' u v x y) : w)
 
 -- pg. 213, line 12
 example : proj u v w z (D' u v x y) = z x y := rfl
@@ -44,13 +41,13 @@ example : proj u v w z (D' u v x y) = z x y := rfl
 error: Application type mismatch: The argument
   w
 has type
-  Prop
-of sort `Type` but is expected to have type
+  Type
+of sort `Type 1` but is expected to have type
   u
-of sort `Prop` in the application
+of sort `Type` in the application
   y w
 -/
 #guard_msgs (error) in
-example (u : Prop) (v : u → Prop) (w : Prop)
+example (u : Type) (v : u → Type) (w : Type)
     (z : ∀ x : u, v x → w) (y : ∀ x : u, v x) : w :=
   y w z
