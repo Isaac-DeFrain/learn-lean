@@ -1,4 +1,6 @@
-/- 3.1 Proposition as Types -/
+/- 3. Propositions and Proofs -/
+
+-- 3.1 Proposition as Types
 
 #check Prop
 #check Nat
