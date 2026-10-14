@@ -2,7 +2,20 @@
 
 ## Intro to lean
 
-[IntroToLean](/IntroToLean/) modules follow [Theorem Proving in Lean 4](https://lean-lang.org/theorem_proving_in_lean4/)
+[IntroToLean](/IntroToLean/) modules follow [Theorem Proving in Lean 4](https://lean-lang.org/theorem_proving_in_lean4/):
+
+1. Introduction
+2. Dependent Type Theory
+3. [Propositions and Proofs](/IntroToLean/PropositionsAndProofs.lean)
+4. [Quantifiers and Equality](/IntroToLean/QuantifiersAndEquality.lean)
+5. [Tactics](/IntroToLean/Tactics.lean)
+6. [Interacting with Lean](/IntroToLean/InteractingWithLean.lean)
+7. [Inductive Types](/IntroToLean/InductiveTypes.lean)
+8. [Induction and Recursion](/IntroToLean/InductinoAndRecursion.lean)
+9. Structures and Records
+10. Types Classes
+11. The Conversion Tactic Mode
+12. Axioms and Computation
 
 ## Lambda Calculus and Combinators
 
