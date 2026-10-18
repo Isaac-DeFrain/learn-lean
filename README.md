@@ -12,7 +12,7 @@
 6. [Interacting with Lean](/IntroToLean/InteractingWithLean.lean)
 7. [Inductive Types](/IntroToLean/InductiveTypes.lean)
 8. [Induction and Recursion](/IntroToLean/InductionAndRecursion.lean)
-9. Structures and Records
+9. [Structures and Records](/IntroToLean/StructuresAndRecords.lean)
 10. Types Classes
 11. The Conversion Tactic Mode
 12. Axioms and Computation
