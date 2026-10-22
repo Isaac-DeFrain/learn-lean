@@ -15,7 +15,7 @@
 9. [Structures and Records](/IntroToLean/StructuresAndRecords.lean)
 10. [Types Classes](/IntroToLean/TypeClasses.lean)
 11. [The Conversion Tactic Mode](/IntroToLean/TheConversionTacticMode.lean)
-12. Axioms and Computation
+12. [Axioms and Computation](/IntroToLean/AxiomsAndComputation.lean)
 
 ## Lambda Calculus and Combinators
 
