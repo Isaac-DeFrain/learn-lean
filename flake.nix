@@ -33,7 +33,7 @@
 
         packages.default =
           (pkgs.lean.buildLeanPackage {
-            name = "LambdaCalculus";
+            name = "LearnLean";
             roots = ["Main"];
             src = pkgs.lib.cleanSource ./.;
           })

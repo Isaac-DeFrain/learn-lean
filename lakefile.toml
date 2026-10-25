@@ -1,11 +1,11 @@
 name = "LearnLean"
 version = "0.1.0"
-defaultTargets = ["IntroToLean", "LambdaCalculus", "errata"]
+defaultTargets = ["TheoremProvingInLean", "LambdaCalculus", "errata"]
 builtinLint = true
 
 [[lean_lib]]
-name = "IntroToLean"
-globs = ["IntroToLean.+"]
+name = "TheoremProvingInLean"
+globs = ["TheoremProvingInLean.+"]
 
 [[lean_lib]]
 name = "LambdaCalculus"
