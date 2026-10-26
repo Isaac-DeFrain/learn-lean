@@ -1,6 +1,6 @@
 # Learn Lean
 
-## Intro to lean
+## Theorem Proving in Lean
 
 [TheoremProvingInLean](/TheoremProvingInLean/) modules follow [Theorem Proving in Lean 4](https://lean-lang.org/theorem_proving_in_lean4/):
 
@@ -16,6 +16,22 @@
 10. [Types Classes](/TheoremProvingInLean/TypeClasses.lean)
 11. [The Conversion Tactic Mode](/TheoremProvingInLean/TheConversionTacticMode.lean)
 12. [Axioms and Computation](/TheoremProvingInLean/AxiomsAndComputation.lean)
+
+## Functional Programming in Lean
+
+[FunctionalProgrammingInLean](/FunctionalProgrammingInLean/) modules follow [Functional Programming In Lean](https://lean-lang.org/functional_programming_in_lean/):
+
+1. [Getting to Know Lean](/FunctionalProgrammingInLean/GettingToKnowLean.lean)
+2. Hello, World!
+Interlude: Propositions, Proofs, and Indexing
+3. Overloading and Type Classes
+4. Monads
+5. Functors, Applicative Functors, and Monads
+6. Monda Transformers
+7. Programming with Dependent Types
+Interlude: Tactics, Induction, and Proofs
+8. Programming, Proving, and Performance
+9. Next Steps
 
 ## Lambda Calculus and Combinators
 
