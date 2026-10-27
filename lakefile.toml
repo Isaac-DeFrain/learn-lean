@@ -16,6 +16,10 @@ globs = ["TheoremProvingInLean.+"]
 name = "FunctionalProgrammingInLean"
 globs = ["FunctionalProgrammingInLean.+"]
 
+[[lean_exe]]
+name = "feline"
+root = "FunctionalProgrammingInLean.Feline"
+
 [[lean_lib]]
 name = "LambdaCalculus"
 globs = ["LambdaCalculus.+"]

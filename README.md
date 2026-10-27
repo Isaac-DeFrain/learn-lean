@@ -22,7 +22,7 @@
 [FunctionalProgrammingInLean](/FunctionalProgrammingInLean/) modules follow [Functional Programming In Lean](https://lean-lang.org/functional_programming_in_lean/):
 
 1. [Getting to Know Lean](/FunctionalProgrammingInLean/GettingToKnowLean.lean)
-2. Hello, World!
+2. [Hello, World!](/FunctionalProgrammingInLean/HelloWorld.lean)
 Interlude: Propositions, Proofs, and Indexing
 3. Overloading and Type Classes
 4. Monads
