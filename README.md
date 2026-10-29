@@ -24,7 +24,7 @@
 1. [Getting to Know Lean](/FunctionalProgrammingInLean/GettingToKnowLean.lean)
 2. [Hello, World!](/FunctionalProgrammingInLean/HelloWorld.lean)
 Interlude: Propositions, Proofs, and Indexing
-3. Overloading and Type Classes
+3. [Overloading and Type Classes](/FunctionalProgrammingInLean/OverloadingAndTypeClasses.lean)
 4. Monads
 5. Functors, Applicative Functors, and Monads
 6. Monda Transformers
