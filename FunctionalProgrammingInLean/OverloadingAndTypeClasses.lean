@@ -1,5 +1,7 @@
 /- 3. Overloading and Type Classes -/
 
+import Lean
+
 -- 3.1 Positive Numbers
 
 inductive Pos : Type where
@@ -154,7 +156,7 @@ info: 2
 #eval (2 : Even)
 
 /--
-PANIC at instOfNatEvenOfInhabited FunctionalProgrammingInLean.OverloadingAndTypeClasses:137:49: 3 is odd
+PANIC at instOfNatEvenOfInhabited FunctionalProgrammingInLean.OverloadingAndTypeClasses:139:49: 3 is odd
 -/
 #guard_msgs (substring := true) in
 #eval (3 : Even)
@@ -506,6 +508,9 @@ instance : HAppend (List α) (NonEmptyList α) (NonEmptyList α) where
     | [] => ne
     | h :: t => { head := h, tail := t ++ ne.head :: ne.tail }
 
+#eval ([] : List String) ++ neList
+-- { head := "a", tail := ["b", "c"] }
+
 #eval ["0"] ++ neList
 -- { head := "0", tail := ["a", "b", "c"] }
 
@@ -522,3 +527,277 @@ instance : Functor BinTree where
 -- BinTree.branch (BinTree.leaf) 1 (BinTree.leaf)
 
 -- 3.6 Coercions
+
+-- using a type in a context where another type is expected
+
+-- 3.6.1 Strings and Paths
+
+#check ("abc" : System.FilePath)
+-- { toString := "abc" } : System.FilePath
+
+#check (inferInstance : Coe String System.FilePath)
+-- inferInstance : Coe String System.FilePath
+
+-- 3.6.2 Positive Numbers
+
+instance : Coe Pos Nat where coe := Pos.toNat
+
+#eval [1, 2, 3, 4].drop Pos.one
+-- [2, 3, 4]
+
+#check [1, 2, 3, 4].drop Pos.one
+-- List.drop Pos.one.toNat [1, 2, 3, 4] : List Nat
+
+-- 3.6.3 Chaining Coercions
+
+#check (Pos.one : Int)
+-- ↑Pos.one.toNat : Int
+
+#check ("a" : Option String)
+-- some "a" : Option String
+
+#check ("a" : Option (Option (Option (Option String))))
+-- some (some (some (some "a"))) : Option (Option (Option (Option String)))
+
+#check fun {α} => (inferInstance : Coe α (Option α))
+
+#check ((42 : Nat) : Option Nat)
+
+-- manual coercion
+#check (↑(42 : Nat) : Option Nat)
+
+-- 3.6.4 Non-Empty Lists and Dependent Coercions
+
+instance : Coe (NonEmptyList α) (List α) where
+  coe
+    | { head, tail } => head :: tail
+
+-- coercion from `List α` to `NonEmptyList α` doesn't make sense because of `[]`
+
+-- dependent coercion from non-empty `List α` to `NonEmptyList α`
+instance : CoeDep (List α) (head :: tail) (NonEmptyList α) where
+  coe := { head, tail }
+
+-- dependent coercions are not chained
+
+#check (["a"] : NonEmptyList String)
+-- { head := "a", tail := [] } : NonEmptyList String
+
+-- 3.6.5 Coercing to Types
+
+structure Monoid where
+  Carrier : Type u
+  neutral : Carrier
+  op : Carrier → Carrier → Carrier
+  opAssoc : ∀ x y z, op (op x y) z = op x (op y z)
+  leftId : ∀ x, op neutral x = x
+  rightId : ∀ x, op x neutral = x
+
+example : Monoid :=
+  { Carrier := Nat,
+    neutral := 0,
+    op x y := x + y,
+    opAssoc := Nat.add_assoc,
+    leftId := Nat.zero_add,
+    rightId := Nat.add_zero,
+  }
+
+example : Monoid :=
+  { Carrier := Nat,
+    neutral := 1,
+    op x y := x * y,
+    opAssoc := Nat.mul_assoc,
+    leftId := Nat.one_mul,
+    rightId := Nat.mul_one,
+  }
+
+example : Monoid :=
+  { Carrier := String,
+    neutral := "",
+    op x y := x ++ y,
+    opAssoc _ _ _ := String.append_assoc,
+    leftId _ := String.empty_append,
+    rightId _ := String.append_empty,
+  }
+
+example {α : Type u} : Monoid :=
+  { Carrier := List α,
+    neutral := [],
+    op x y := x ++ y,
+    opAssoc := List.append_assoc,
+    leftId _ := rfl,
+    rightId _ := by simp
+  }
+
+instance : CoeSort Monoid (Type u) where
+  coe m := m.Carrier
+
+def Monoid.foldMap (M : Monoid) (f : α → M) (xs : List α) : M :=
+  let rec go (acc : M) : List α → M
+    | [] => acc
+    | x :: xs => go (M.op acc (f x)) xs
+  go M.neutral xs
+
+-- `if` uses coercion of `Bool` to a decidable `Prop`
+
+instance : CoeSort Bool Prop where
+  coe b := b = true
+
+-- 3.6.6 Coercing to Functions
+
+#check CoeFun
+-- CoeFun.{u, v} (α : Sort u) (γ : outParam (α → Sort v)) : Sort (max (max 1 u) v)
+
+structure Adder where
+  howMuch : Nat
+
+instance : CoeFun Adder (fun _ => Nat → Nat) where
+  coe a := (· + a.howMuch)
+
+#eval (Adder.mk 19) 23
+-- 42
+
+#check (Adder.mk 19 : Nat → Nat)
+-- fun x => x + { howMuch := 19 }.howMuch : Nat → Nat
+
+inductive JSON where
+  | true : JSON
+  | false : JSON
+  | null : JSON
+  | string : String → JSON
+  | number : Float → JSON
+  | object : List (String × JSON) → JSON
+  | array : List JSON → JSON
+
+structure Serializer where
+  Contents : Type
+  serialize : Contents → JSON
+
+def Str : Serializer :=
+  { Contents := String, serialize := JSON.string }
+
+instance : CoeSort Serializer Type where
+  coe s := s.Contents
+
+instance : CoeFun Serializer (fun s => s.Contents → JSON) where
+  coe s := s.serialize
+
+def buildResponse (title : String) (S : Serializer) (record : S) : JSON :=
+  .object [
+    ("title", .string title),
+    ("status", .number 200),
+    ("record", S record)
+  ]
+
+#eval buildResponse "Hello" Str "world"
+-- JSON.object [("title", JSON.string "Hello"), ("status", JSON.number 200.000000), ("record", JSON.string "world")]
+
+def String.dropDecimals (numStr : String) : String :=
+  if numStr.contains '.' then
+    let noTrailingZeros := numStr.dropEndWhile (· == '0')
+    (noTrailingZeros.dropEndWhile (· == '.')).copy
+  else numStr
+
+#eval ["5.0000".dropDecimals, "3.1400".dropDecimals]
+-- ["5", "3.14"]
+
+def List.separate [ToString α] (sep : α) : List String → String
+  | [] => ""
+  | x :: xs => String.join (x :: xs.map (ToString.toString sep ++ ·))
+
+#eval [["a", "b"].separate ',', ["a", "b"].separate 42, ["a", "b"].separate " - "]
+-- ["a,b", "a42b", "a - b"]
+
+partial def JSON.asString (val : JSON) : String :=
+  let escape := Lean.Json.escape
+  match val with
+  | true => "true"
+  | false => "false"
+  | null => "null"
+  | string s => "\"" ++ escape s ++ "\""
+  | number n => n.toString.dropDecimals
+  | object members =>
+    let memberToString mem :=
+      "\"" ++ escape mem.fst ++ "\": " ++ asString mem.snd
+    "{" ++ (members.map memberToString).separate ", " ++ "}"
+  | array elements =>
+    "[" ++ (elements.map asString).separate ", " ++ "]"
+
+#eval (buildResponse "Hello" Str "world").asString
+-- "{\"title\": \"Hello\", \"status\": 200, \"record\": \"world\"}"
+
+-- 3.6.7 Messages You May Meet
+
+-- 3.6.8 Design Considerations
+
+-- limitations:
+-- - no `outParam` so all types must be known apriori
+-- - coercions not applied in field accessor notation
+
+/--
+error: Application type mismatch: The argument
+  neList
+has type
+  NonEmptyList String
+but is expected to have type
+  List ?m.2
+in the application
+  List.getLast? neList
+-/
+#guard_msgs (error) in
+#eval List.getLast? neList
+
+#eval (List.getLast? neList : Option String)
+-- some "c"
+
+#eval (List.getLast? (neList : List String))
+-- some "c"
+
+/--
+error: Invalid field `getLast?`: The environment does not contain `NonEmptyList.getLast?`, so it is not possible to project the field `getLast?` from an expression
+  neList
+of type `NonEmptyList String`
+-/
+#guard_msgs (error) in
+#eval neList.getLast?
+
+#eval (neList : List String).getLast?
+-- some "c"
+
+-- 3.7 Additional Conveniences
+
+-- 3.7.1 Constructor Syntax for Instances
+
+-- type classes are structure types and instances are values of these types
+
+-- Lean stores additional info for type classes, such as:
+-- - which parameters are output params
+-- - instances are registered for searching
+
+structure Tree : Type where
+  latinName : String
+  commonNames : List String
+deriving Repr
+
+example : Tree :=
+  ⟨ "Quercus robur", ["common oak", "European oak"] ⟩
+
+example : Tree :=
+  { latinName := "Betula pendula",
+    commonNames := ["silver birch", "warty birch"]
+  }
+
+example : Tree where
+  latinName := "Prunus spinosa"
+  commonNames := ["sloe", "blackthorn"]
+
+class Display (α : Type u) where
+  displayName : α → String
+
+instance : Display Tree := ⟨ Tree.latinName ⟩
+instance : Display Tree := { displayName := Tree.latinName }
+instance : Display Tree where displayName := Tree.latinName
+
+-- 3.7.2 Examples
+
+-- 3.8 Summary
