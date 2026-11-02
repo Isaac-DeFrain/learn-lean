@@ -811,3 +811,169 @@ open Expr Prim Trace in
       (prim (other (trace minus)) (const 3)
         (const 4)))
 -- { log := [(Prim.plus, 1, 2), (Prim.minus, 3, 4)], val := -3 }
+
+-- `do`-Notation for Monads
+
+example [Monad m] (x : m α) : (do x) = x := rfl
+example [Monad m] (x : m α) (f : α → m β) : (do let x ← x; f x) = x >>= f := rfl
+example [Monad m] (x : m Unit) (y : m α) : (do x; y) = x >>= fun () => (do y) := rfl
+example [Monad m] (x : m α) (y : m β) : (do let _ := x; y) = let _ := x; (do y) := rfl
+
+set_option linter.checkUnivs false in
+def firstThirdFifthDo [Monad m] (lookup : List α → Nat → m α)
+    (xs : List α) : m (α × α × α) := do
+  let first ← lookup xs 0
+  let third ← lookup xs 2
+  let fifth ← lookup xs 4
+  (first, third, fifth)
+
+def numberTreeDo (t : BinTree α) : BinTree (Nat × α) :=
+  let rec helper : BinTree α → State Nat (BinTree (Nat × α))
+    | .leaf => .ok .leaf
+    | .branch l x r => do
+      let left ← helper l
+      let n ← .get
+      .set (n + 1)
+      let right ← helper r
+      .ok (.branch left (n, x) right)
+  (helper t 0).snd
+
+def mapMDo [Monad m] (f : α → m β) : List α → m (List β)
+  | [] => pure []
+  | x :: xs => do (← f x) :: (← mapM f xs)
+
+def numberTreeDo' (t : BinTree α) : BinTree (Nat × α) :=
+  let incrementState : State Nat Nat := do
+    let n ← .get
+    .set (n + 1)
+    n
+  let rec helper : BinTree α → State Nat (BinTree (Nat × α))
+    | .leaf => pure .leaf
+    | .branch l x r => do
+      pure <|
+        .branch
+          (← helper l)
+          ((← incrementState), x)
+          (← helper r)
+  helper t 0 |>.snd
+
+-- 4.4.1 Exercises
+-- Rewrite `evaluateM`, its helpers, and the different specific use cases using do-notation
+-- instead of explicit calls to >>=.
+
+def Expr.evaluateMDo [Monad m]
+    (applySpecial : special → Int → Int → m Int)
+    : Expr (Prim special) → m Int
+  | .const x => x
+  | .prim op e1 e2 => do
+    let v1 ← e1.evaluateMDo applySpecial
+    let v2 ← e2.evaluateMDo applySpecial
+    applyPrim applySpecial op v1 v2
+
+-- Rewrite firstThirdFifthSeventh using nested actions.
+
+set_option linter.checkUnivs false in
+def firstThirdFifthSeventh [Monad m] (lookup : List α → Nat → m α)
+    (xs : List α) : m (α × α × α × α) := do
+  ((← lookup xs 0), (← lookup xs 2), (← lookup xs 4), (← lookup xs 6))
+
+-- 4.5 The IO Monad
+
+#print Nat
+-- inductive Nat : Type
+-- number of parameters: 0
+-- constructors:
+-- Nat.zero : Nat
+-- Nat.succ : Nat → Nat
+
+#print IO
+-- @[reducible] def IO : Type → Type :=
+-- EIO IO.Error
+
+-- errors that can be thrown by an IO action
+#print IO.Error
+-- inductive IO.Error : Type
+-- number of parameters: 0
+-- constructors:
+-- IO.Error.alreadyExists : Option String → UInt32 → String → IO.Error
+-- IO.Error.otherError : UInt32 → String → IO.Error
+-- IO.Error.resourceBusy : UInt32 → String → IO.Error
+-- IO.Error.resourceVanished : UInt32 → String → IO.Error
+-- IO.Error.unsupportedOperation : UInt32 → String → IO.Error
+-- IO.Error.hardwareFault : UInt32 → String → IO.Error
+-- IO.Error.unsatisfiedConstraints : UInt32 → String → IO.Error
+-- IO.Error.illegalOperation : UInt32 → String → IO.Error
+-- IO.Error.protocolError : UInt32 → String → IO.Error
+-- IO.Error.timeExpired : UInt32 → String → IO.Error
+-- IO.Error.interrupted : String → UInt32 → String → IO.Error
+-- IO.Error.noFileOrDirectory : String → UInt32 → String → IO.Error
+-- IO.Error.invalidArgument : Option String → UInt32 → String → IO.Error
+-- IO.Error.permissionDenied : Option String → UInt32 → String → IO.Error
+-- IO.Error.resourceExhausted : Option String → UInt32 → String → IO.Error
+-- IO.Error.inappropriateType : Option String → UInt32 → String → IO.Error
+-- IO.Error.noSuchThing : Option String → UInt32 → String → IO.Error
+-- IO.Error.unexpectedEof : IO.Error
+-- IO.Error.userError : String → IO.Error
+
+-- `EIO ε α` represents IO actions which fail with error type ε or succeed with value type α
+#print EIO
+-- def EIO : Type → Type → Type :=
+-- fun ε α => EST ε IO.RealWorld α
+
+-- A representation of “the real world” that's used in IO monads to ensure that IO actions are not reordered.
+#print IO.RealWorld
+-- def IO.RealWorld : Type :=
+-- IO.RealWorld.nonemptyType.type
+
+-- `EST ε σ α` function from state type σ to `EST.Out ε σ α`
+#print EST
+-- def EST : Type → Type → Type → Type :=
+-- fun ε σ α => Void σ → EST.Out ε σ α
+
+-- `EST.Out ε σ α` is like stateful `Except ε α`
+#print EST.Out
+-- inductive EST.Out : Type → Type → Type → Type
+-- number of parameters: 3
+-- constructors:
+-- EST.Out.ok : {ε σ α : Type} → α → Void σ → EST.Out ε σ α
+-- EST.Out.error : {ε σ α : Type} → ε → Void σ → EST.Out ε σ α
+
+-- Void is an internal primitive which causes a value to be erased from compiled code
+-- Void σ has the same representation as Unit
+
+#print EST.pure
+-- protected def EST.pure : {α ε σ : Type} → α → EST ε σ α :=
+-- fun {α ε σ} a s => EST.Out.ok a s
+
+#print EST.bind
+-- protected def EST.bind : {ε σ α β : Type} → EST ε σ α → (α → EST ε σ β) → EST ε σ β :=
+-- fun {ε σ α β} x f s =>
+--   match x s with
+--   | EST.Out.ok a s => f a s
+--   | EST.Out.error e s => EST.Out.error e s
+
+-- 4.6 Additional Conveniences
+
+-- 4.6.1 Shared Argument Types
+
+-- 4.6.2 Leading Dot Notation
+
+-- 4.6.3 Or-Patterns
+
+def str := "default"
+
+def getTheString : String ⊕ α → String
+  | .inl str | .inr _ => str
+
+#eval getTheString (.inl "hello" : _ ⊕ Int)
+-- "hello"
+
+#eval getTheString (.inr 0 : _ ⊕ Float)
+-- "default"
+
+-- 4.7 Summary
+
+-- does not evalute the IO action without type IO Unit
+def bad : Unit :=
+  let _ : IO Unit := do IO.FS.createDir "test"
+  ()
