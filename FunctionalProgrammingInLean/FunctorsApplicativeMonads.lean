@@ -355,8 +355,7 @@ instance : Functor (Validate ε) where
     | .ok x => .ok (f x)
     | .errors errs => .errors errs
 
--- errors accumulate
-
+-- errors accumulate - this would be incompatible with a monad instance
 instance : Applicative (Validate ε) where
   pure := .ok
   seq f x :=
@@ -378,6 +377,8 @@ def checkName (name : String) : Validate (Field × String) {n // n ≠ ""} :=
   else
     reportError "name" "Required"
 
+-- resembles `Bind.bind` but `Validate ε` cannot be turned into a monad because
+-- it would have a bad interaction between `seq` and `bind`
 def Validate.andThen (val : Validate ε α)
     (next : α → Validate ε β) : Validate ε β :=
   match val with
@@ -412,3 +413,87 @@ def checkInput (year : Nat) (input : RawInput)
 
 #eval checkInput 2026 {name := "Isaac", birthYear := "2027"}
 -- Validate.errors { head := ("birth year", "Must be no later than 2026"), tail := [] }
+
+-- 5.3 The Applicative Contract
+
+class ApplicativeContract (f : Type u → Type v) [Applicative f] where
+  pure_identity : ∀ x : f α, pure id <*> x = x
+  pure_seq_noop : ∀ x g, (pure g : f (α → β)) <*> pure x = pure (g x)
+  pure_ordering : ∀ x (u : f (α → β)), u <*> pure x = pure (· x) <*> u
+  respects_comp :
+    ∀ (u : f (β → γ)) (v : f (α → β)) w, pure (· ∘ ·) <*> u <*> v <*> w = u <*> (v <*> w)
+
+instance : ApplicativeContract Option where
+  pure_identity _ := by simp [Seq.seq]
+  pure_seq_noop _ _ := by simp [Seq.seq]
+  pure_ordering _ g := by simp [Seq.seq]; cases g <;> rfl
+  respects_comp u v _ := by simp [Seq.seq]; cases u <;> cases v <;> simp
+
+-- 5.3.1 All Applicatives are Functors
+
+class FunctorContract (f : Type u → Type v) [Functor f] where
+  map_identity : ∀ x : f α, id <$> x = x
+  map_composition :
+    ∀ (x : f α) (g : α → β) (h : β → γ), (h ∘ g) <$> x = h <$> g <$> x
+
+instance [Applicative f] : Functor f where
+  map f x := pure f <*> x
+
+instance [Applicative f] [ApplicativeContract f] : FunctorContract f where
+  map_identity _ := by
+    simp [Functor.map, ApplicativeContract.pure_identity]
+  map_composition x g h := by
+    simp [Functor.map, ←ApplicativeContract.respects_comp (pure h) (pure g) x]
+    simp [ApplicativeContract.pure_seq_noop]
+
+-- 5.3.2 All Monads are Applicative Functors
+
+class MonadContract (m : Type u → Type v) [Monad m] where
+  left_identity : ∀ x (f : α → m β), pure x >>= f = f x
+  right_identity : ∀ x : m α, x >>= pure = x
+  bind_identity :
+    ∀ x (f : α → m β) (g : β → m γ), x >>= f >>= g = x >>= (fun x => (f x) >>= g)
+
+instance (priority := high) [Monad m] : Applicative m where
+  pure := pure
+  seq f x := do
+    let f ← f
+    let x ← x ()
+    pure (f x)
+
+instance [Monad m] [MonadContract m] : ApplicativeContract m where
+  pure_identity _ := by
+    simp [Seq.seq, MonadContract.left_identity, MonadContract.right_identity]
+  pure_seq_noop _ _ := by
+    simp [Seq.seq, MonadContract.left_identity]
+  pure_ordering _ _ := by
+    simp [Seq.seq, MonadContract.left_identity]
+  respects_comp _ _ _ := by
+    simp [Seq.seq, MonadContract.left_identity, MonadContract.bind_identity]
+
+-- 5.3.3 Additional Stipulations
+
+-- the interaction between `seq` and `bind` should always be as in the above instance
+-- this is the problem with implementing `Monad (Validate ε)`:
+
+-- say we have
+
+def notFun : Validate String (Nat → String) :=
+  .errors { head := "First error", tail := [] }
+
+def notArg : Validate String Nat :=
+  .errors { head := "Second error", tail := [] }
+
+#eval notFun <*> notArg
+-- Validate.errors { head := "First error", tail := ["Second error"] }
+
+-- but if we implement
+instance : Monad (Validate ε) where
+  pure := pure
+  bind
+    | .ok x, f => f x
+    | .errors errs, _ => .errors errs
+
+-- we only capture the first error with the bind impl of seq
+#eval notFun <*> notArg
+-- Validate.errors { head := "First error", tail := [] }
