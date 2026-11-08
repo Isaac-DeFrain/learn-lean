@@ -827,3 +827,91 @@ def checkLegacyInput (input : RawInput) : Validate TreeError LegacyCheckedInput 
 -- name: Required
 
 end Hidden
+
+-- 5.5 Universes
+
+#check Prop
+-- Prop : Type
+
+-- Girard's paradox: `Type` cannot be a `Type`
+
+#check (Nat : Type)
+#check (Nat → String : Type)
+
+#check Type
+-- Type : Type 1
+
+#check (Nat → Type : Type 1)
+#check (Type → Type : Type 1)
+#check (Type → Type 1 : Type 2)
+#check (Type 1 → Type : Type 2)
+
+universe u v
+#check Type u
+-- Type u : Type (u + 1)
+
+#check (Nat → Type u : Type (u + 1))
+#check (Type u → Type v : Type (max u v + 1))
+
+-- one exception
+-- a function with return type that is a proposition
+#check (Type u → (_ : Prop) : Prop)
+#check ((n : Nat) → n > 0 : Prop)
+#check ({α : Type u} → [t : ToString α] → (a : α) → t.toString a ≠ "" : Prop)
+
+-- 5.5.1 User Defined Types
+
+inductive MyList (α : Type) : Type where
+  | nil : MyList α
+  | cons : α → MyList α → MyList α
+
+#check (MyList : Type → Type)
+
+/--
+error: Invalid universe level in constructor `MyList'.cons`: Parameter has type
+  α
+at universe level
+  2
+which is not less than or equal to the inductive type's resulting universe level
+  1
+-/
+#guard_msgs (error) in
+inductive MyList' (α : Type 1) : Type where
+  | nil : MyList' α
+  | cons : α → MyList' α → MyList' α
+
+-- 5.5.2 Universe Polymorphism
+
+inductive MyList' (α : Type u) : Type u where
+  | nil : MyList' α
+  | cons : α → MyList' α → MyList' α
+
+#check (MyList'.{u} : Type u → Type u)
+
+#check MyList'.cons.{1} Nat .nil
+#check (.cons Nat .nil : MyList' Type)
+
+#check MyList'.cons.{2} Type .nil
+#check (.cons Type .nil : MyList' <| Type 1)
+
+-- 5.5.2.1 Writing Universe-Polymorphic Definitions
+
+-- independent type variables should have different universe variables
+
+inductive Sum' (α : Type u) (β : Type v) : Type (max u v) where
+  | inl : α → Sum' α β
+  | inr : β → Sum' α β
+
+-- type of type with universe variables `u`, `v` is in type universe either:
+-- - `max u v`
+-- - `max u v + 1`
+
+-- try to put type in as small of a universe as possible
+
+-- 5.5.2.2 `Prop` and Polymorphism
+
+#check ([1 + 1 = 2, "a" ++ "b" = "ab"] : List.{0} Prop)
+
+-- 5.5.3 Polymorphism in Practice
+
+-- actual type class definitions are universe polymorphic
