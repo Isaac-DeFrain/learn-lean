@@ -366,7 +366,7 @@ instance : Applicative (Validate ε) where
       | .ok _ => .errors errs
       | .errors errs' => .errors (errs ++ errs')
 
-def Field := String
+abbrev Field := String
 
 def reportError (f : Field) (msg : String) : Validate (Field × String) α :=
   .errors { head := (f, msg), tail := [] }
@@ -497,3 +497,333 @@ instance : Monad (Validate ε) where
 -- we only capture the first error with the bind impl of seq
 #eval notFun <*> notArg
 -- Validate.errors { head := "First error", tail := [] }
+
+-- 5.4 Alternatives
+
+-- 5.4.1 Recovery from Failure
+
+-- an alternative set of business rules that implement conventions from a legacy system
+-- might be the following:
+-- 1. All human users must provide a birth year that is four digits.
+-- 2. Users born prior to 1970 do not need to provide names, due to incomplete older records.
+-- 3. Users born on or after 1970 must provide names.
+-- 3. Companies should enter "FIRM" as their year of birth and provide a company name.
+
+abbrev NonEmptyString := {s : String // s ≠ ""}
+
+inductive LegacyCheckedInput where
+  | humanBefore1970 :
+    (birthYear : {y // y > 999 ∧ y < 1970}) →
+    String →
+    LegacyCheckedInput
+  | humanAfter1970 :
+    (birthYear : {y // y ≥ 1970}) →
+    NonEmptyString →
+    LegacyCheckedInput
+  | company : NonEmptyString → LegacyCheckedInput
+deriving Repr
+
+-- recover from failure while preserving errors
+
+def Validate.orElse (a : Validate ε α) (b : Unit → Validate ε α) : Validate ε α :=
+  match a with
+  | .ok a => .ok a
+  | .errors errs =>
+    match b () with
+    | .ok b => b
+    | .errors errs' => .errors (errs ++ errs')
+
+example [OrElse t] (e1 e2 : t) : (e1 <|> e2) = OrElse.orElse e1 (fun () => e2) := rfl
+
+instance : OrElse (Validate ε α) where
+  orElse := .orElse
+
+-- build validator for `LegacyCheckedInput` from a validator for each constructor
+
+-- check that a Boolean condition holds without recording any evidence of this fact in a type
+def checkThat (cond : Bool) (field : Field) (msg : String)
+    : Validate (Field × String) Unit :=
+  if cond then pure () else reportError field msg
+
+def checkCompany' (input : RawInput) : Validate (Field × String) LegacyCheckedInput :=
+  pure (fun () => .company) <*>
+    checkThat (input.birthYear == "FIRM") "birth year" "FIRM if a company" <*>
+    checkName input.name
+
+example [SeqRight t] (e1 e2 : t α)
+    : (e1 *> e2) = SeqRight.seqRight e1 (fun () => e2) := rfl
+
+-- default impl of `SeqRight` for `Seq + Pure`
+instance [Seq t] [Pure t] : SeqRight t where
+  seqRight x y := pure (fun _ x => x) <*> x <*> y ()
+
+-- simplify `checkCompany'` with `*>`
+
+def checkCompany (input : RawInput) : Validate (Field × String) LegacyCheckedInput :=
+  checkThat (input.birthYear == "FIRM") "birth year" "FIRM if a company" *>
+    .company <$> checkName input.name
+
+-- general-purpose tool for checking subtypes
+def checkSubtype {α : Type} (v : α) (p : α → Prop) [Decidable (p v)] (err : ε)
+    : Validate ε {x // p x} :=
+  if h : p v then
+    pure ⟨v, h⟩
+  else
+    .errors { head := err, tail := [] }
+
+def checkHumanBefore1970 (input : RawInput) : Validate (Field × String) LegacyCheckedInput :=
+  (checkYearIsNat input.birthYear).andThen fun y =>
+    .humanBefore1970 <$>
+      checkSubtype y (fun y => y > 999 ∧ y < 1970) ("birth year", "less than 1970") <*>
+      pure input.name
+
+def checkHumanAfter1970 (input : RawInput) : Validate (Field × String) LegacyCheckedInput :=
+  (checkYearIsNat input.birthYear).andThen fun y =>
+    .humanAfter1970 <$>
+      checkSubtype y (· ≥ 1970) ("birth year", "greater than 1970") <*>
+      checkName input.name
+
+def checkLegacyInput (input : RawInput) : Validate (Field × String) LegacyCheckedInput :=
+  checkCompany input <|> checkHumanBefore1970 input <|> checkHumanAfter1970 input
+
+#eval checkLegacyInput ⟨"Johnny's Troll Groomers", "FIRM"⟩
+-- Validate.ok (LegacyCheckedInput.company "Johnny's Troll Groomers")
+
+#eval checkLegacyInput ⟨"Johnny", "1963"⟩
+-- Validate.ok (LegacyCheckedInput.humanBefore1970 1963 "Johnny")
+
+#eval checkLegacyInput ⟨"", "1963"⟩
+-- Validate.ok (LegacyCheckedInput.humanBefore1970 1963 "")
+
+#eval checkLegacyInput ⟨"", "1970"⟩
+-- Validate.errors
+--   { head := ("birth year", "FIRM if a company"),
+--     tail := [("birth year", "less than 1970"), ("name", "Required")] }
+
+-- 5.4.2 The `Alternative` Class
+
+-- types supprting failure and recovery
+
+#print OrElse
+-- class OrElse.{u} (α : Type u) : Type u
+-- number of parameters: 1
+-- fields:
+--   OrElse.orElse : α → (Unit → α) → α
+-- constructor:
+--   OrElse.mk.{u} {α : Type u} (orElse : α → (Unit → α) → α) : OrElse α
+
+-- applicative functors with additional operators for failure and recovery
+#print Alternative
+-- class Alternative.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- parents:
+--   Alternative.toApplicative : Applicative f
+-- fields:
+--   Functor.map : {α β : Type u} → (α → β) → f α → f β :=
+--     fun {α β} x y => pure x <*> y
+--   Functor.mapConst : {α β : Type u} → α → f β → f α :=
+--     fun {α β} => Functor.map ∘ Function.const β
+--   Pure.pure : {α : Type u} → α → f α
+--   Seq.seq : {α β : Type u} → f (α → β) → (Unit → f α) → f β
+--   SeqLeft.seqLeft : {α β : Type u} → f α → (Unit → f β) → f α :=
+--     fun {α β} a b => Function.const β <$> a <*> b ()
+--   SeqRight.seqRight : {α β : Type u} → f α → (Unit → f β) → f β :=
+--     fun {α β} a b => Function.const α id <$> a <*> b ()
+--   Alternative.failure : {α : Type u} → f α
+--   Alternative.orElse : {α : Type u} → f α → (Unit → f α) → f α
+-- constructor:
+--   Alternative.mk.{u, v} {f : Type u → Type v} [toApplicative : Applicative f] (failure : {α : Type u} → f α)
+--     (orElse : {α : Type u} → f α → (Unit → f α) → f α) : Alternative f
+-- field notation resolution order:
+--   Alternative, Applicative, Functor, Pure, Seq, SeqLeft, SeqRight
+
+-- Alternative => OrElse
+instance [Alternative t] : OrElse (t α) where
+  orElse := Alternative.orElse
+
+instance : Alternative Option where
+  failure := none
+  orElse
+    | none, y => y ()
+    | some x, _ => some x
+
+-- `Many` is an instance of `Alternative`
+
+def Many.orElse : Many α → (Unit → Many α) → Many α
+  | .none, m => m ()
+  | .more x xs, m => .more x (fun () => (xs ()).orElse m)
+
+instance : Alternative Many where
+  failure := .none
+  orElse := .orElse
+
+#print guard
+-- def guard.{v} : {f : Type → Type v} → [Alternative f] → (p : Prop) → [Decidable p] → f Unit :=
+-- fun {f} [Alternative f] p [Decidable p] => if p then pure () else failure
+
+-- `guard` can be used to cancel entire branches of computation in monadic programs
+
+def Many.countdown : Nat → Many Nat
+  | 0 => .none
+  | n + 1 => .more n (fun () => countdown n)
+
+def evenDivisors (n : Nat) : Many Nat := do
+  let k ← .countdown (n + 1)
+  guard (k % 2 = 0) -- even
+  guard (n % k = 0) -- divisor
+  pure k
+
+#eval (evenDivisors 20).takeAll
+-- [20, 10, 4, 2]
+
+-- 5.4.3 Exercises
+
+-- 5.4.3.1 Improve Validation Friendliness
+
+-- The errors returned from `Validate` programs that use `<|>` can be difficult to read,
+-- because inclusion in the list of errors simply means that the error can be reached
+-- through _some_ code path. A more structured error report can be used to guide the user
+-- through the process more accurately:
+
+-- - Replace the `NonEmptyList` in `Validate.errors` with a bare type variable, and then
+--   update the definitions of the `Applicative (Validate ε)` and `OrElse (Validate ε α)`
+--   instances to require only that there be an `Append ε` instance available.
+
+-- - Define a function `Validate.mapErrors : Validate ε α → (ε → ε') → Validate ε' α` that
+--   transforms all the errors in a validation run.
+
+-- - Using the datatype `TreeError` to represent errors, rewrite the legacy validation system
+--   to track its path through the three alternatives.
+
+-- - Write a function `report : TreeError → String` that outputs a user-friendly view of the
+--   `TreeError`'s accumulated warnings and errors.
+
+namespace Hidden
+
+inductive Validate (ε α : Type) : Type where
+  | ok : α → Validate ε α
+  | errors : ε → Validate ε α
+
+instance : Functor (Validate ε) where
+  map f
+    | .ok x => .ok (f x)
+    | .errors errs => .errors errs
+
+-- errors accumulate
+instance [Append ε] : Applicative (Validate ε) where
+  pure := .ok
+  seq
+    | .ok f, x => f <$> x ()
+    | .errors errs, x =>
+      match x () with
+      | .ok _ => .errors errs
+      | .errors errs' => .errors (errs ++ errs')
+
+instance [Append ε] : OrElse (Validate ε α) where
+  orElse
+    | .ok x, _ => .ok x
+    | .errors errs, y =>
+      match y () with
+      | .ok y => .ok y
+      | .errors errs' => .errors (errs ++ errs')
+
+def Validate.mapErrors : Validate ε α → (ε → ε') → Validate ε' α
+  | .ok x, _ => .ok x
+  | .errors errs, f => .errors (f errs)
+
+deriving instance Repr for Field
+
+inductive TreeError where
+  | field : Field → String → TreeError
+  | path : String → TreeError → TreeError
+  | both : TreeError → TreeError → TreeError
+deriving Repr
+
+instance : Append TreeError where
+  append := .both
+
+abbrev Path := Option String
+
+def checkSubtype {α : Type} (v : α) (p : α → Prop) [Decidable (p v)] (err : ε) [Append ε]
+    : Validate ε {x // p x} :=
+  if h : p v then
+    pure ⟨v, h⟩
+  else
+    .errors err
+
+def report : TreeError → String
+  | .field f s => s!"{f}: {s}"
+  | .path p err =>
+    match err with
+    | .field f s => s!"--- {p} ---\n{f}: {s}"
+    | .both e1 e2 => s!"--- {p} ---\n{report e1}\n{report e2}"
+    | .path .. => unreachable!
+  | .both e1 e2 => s!"{report e1}\n{report e2}"
+
+def printReport : Validate TreeError α → IO Unit
+  | .ok _ => pure ()
+  | .errors errs => do IO.println <| report errs
+
+def Validate.andThen : Validate ε α → (α → Validate ε β) → Validate ε β
+  | .ok x, next => next x
+  | .errors errs, _ => .errors errs
+
+def reportError (path : Path) (f : Field) (msg : String) : Validate TreeError α :=
+  match path with
+  | none => .errors <| .field f msg
+  | some path => .errors <| .path path <| .field f msg
+
+def checkYearIsNat (year : String) : Validate TreeError Nat :=
+  match year.trimAscii.toNat? with
+  | none => reportError none "birth year" "Must be digits"
+  | some year => pure year
+
+def checkName (name : String) : Validate TreeError {n // n ≠ ""} :=
+  if h : name ≠ "" then
+    pure ⟨name, h⟩
+  else
+    reportError none "name" "Required"
+
+def checkThat (cond : Bool) (path : Path) (field : Field) (msg : String)
+    : Validate TreeError Unit :=
+  if cond then pure () else reportError path field msg
+
+def checkCompany (input : RawInput) : Validate TreeError LegacyCheckedInput :=
+  checkThat (input.birthYear == "FIRM") "Company" "birth year" "FIRM if a company" *>
+    .company <$> checkName input.name
+
+def checkHumanBefore1970 (input : RawInput) : Validate TreeError LegacyCheckedInput :=
+  (checkYearIsNat input.birthYear).andThen fun y =>
+    .humanBefore1970 <$>
+      checkSubtype y (fun y => y > 999 ∧ y < 1970)
+        (.path "Human before 1970" <| .field "birth year" "less than 1970") <*>
+      pure input.name
+
+def checkHumanAfter1970 (input : RawInput) : Validate TreeError LegacyCheckedInput :=
+  (checkYearIsNat input.birthYear).andThen fun y =>
+    .humanAfter1970 <$>
+      checkSubtype y (· ≥ 1970)
+        (.path "Human after 1970" <| .field "birth year" "greater than 1970") <*>
+      checkName input.name
+
+def checkLegacyInput (input : RawInput) : Validate TreeError LegacyCheckedInput :=
+  checkCompany input <|> checkHumanBefore1970 input <|> checkHumanAfter1970 input
+
+#eval checkLegacyInput ⟨"Johnny's Troll Groomers", "FIRM"⟩
+-- Hidden.Validate.ok (LegacyCheckedInput.company "Johnny's Troll Groomers")
+
+#eval checkLegacyInput ⟨"Johnny", "1963"⟩
+-- Hidden.Validate.ok (LegacyCheckedInput.humanBefore1970 1963 "Johnny")
+
+#eval checkLegacyInput ⟨"", "1963"⟩
+-- Hidden.Validate.ok (LegacyCheckedInput.humanBefore1970 1963 "")
+
+#eval checkLegacyInput ⟨"", "1970"⟩ |> printReport
+-- --- Company ---
+-- birth year: FIRM if a company
+-- name: Required
+-- --- Human before 1970 ---
+-- birth year: less than 1970
+-- name: Required
+
+end Hidden
