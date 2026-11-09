@@ -554,7 +554,7 @@ example [SeqRight t] (e1 e2 : t α)
     : (e1 *> e2) = SeqRight.seqRight e1 (fun () => e2) := rfl
 
 -- default impl of `SeqRight` for `Seq + Pure`
-instance [Seq t] [Pure t] : SeqRight t where
+instance (priority := low) [Seq t] [Pure t] : SeqRight t where
   seqRight x y := pure (fun _ x => x) <*> x <*> y ()
 
 -- simplify `checkCompany'` with `*>`
@@ -915,3 +915,264 @@ inductive Sum' (α : Type u) (β : Type v) : Type (max u v) where
 -- 5.5.3 Polymorphism in Practice
 
 -- actual type class definitions are universe polymorphic
+
+-- 5.6 The Complete Definitions
+
+-- 5.6.1 Functor
+
+#print Functor
+-- class Functor.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- fields:
+--   Functor.map : {α β : Type u} → (α → β) → f α → f β
+--   Functor.mapConst : {α β : Type u} → α → f β → f α :=
+--     fun {α β} => Functor.map ∘ Function.const β
+-- constructor:
+--   Functor.mk.{u, v} {f : Type u → Type v} (map : {α β : Type u} → (α → β) → f α → f β)
+--     (mapConst : {α β : Type u} → α → f β → f α) : Functor f
+
+-- `Functor.map` takes a function of type `α → β : Type (u + 1)`, value of type `f α : Type v`
+
+-- 5.6.2 Applicative
+
+-- `Applicative` is built from `Pure`, `Seq`, `SeqRight`, and `SeqLeft`
+
+#print Pure
+-- class Pure.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- fields:
+--   Pure.pure : {α : Type u} → α → f α
+-- constructor:
+--   Pure.mk.{u, v} {f : Type u → Type v} (pure : {α : Type u} → α → f α) : Pure f
+
+#print Seq
+-- class Seq.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- fields:
+--   Seq.seq : {α β : Type u} → f (α → β) → (Unit → f α) → f β
+-- constructor:
+--   Seq.mk.{u, v} {f : Type u → Type v} (seq : {α β : Type u} → f (α → β) → (Unit → f α) → f β) : Seq f
+
+-- executes left than possibly right, returns result from right
+#print SeqRight
+-- class SeqRight.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- fields:
+--   SeqRight.seqRight : {α β : Type u} → f α → (Unit → f β) → f β
+-- constructor:
+--   SeqRight.mk.{u, v} {f : Type u → Type v} (seqRight : {α β : Type u} → f α → (Unit → f β) → f β) : SeqRight f
+
+-- executes left than possibly right, returns result from left
+#print SeqLeft
+-- class SeqLeft.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- fields:
+--   SeqLeft.seqLeft : {α β : Type u} → f α → (Unit → f β) → f α
+-- constructor:
+--   SeqLeft.mk.{u, v} {f : Type u → Type v} (seqLeft : {α β : Type u} → f α → (Unit → f β) → f α) : SeqLeft f
+
+#print Applicative
+-- class Applicative.{u, v} (f : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- parents:
+--   Applicative.toFunctor : Functor f
+--   Applicative.toPure : Pure f
+--   Applicative.toSeq : Seq f
+--   Applicative.toSeqLeft : SeqLeft f
+--   Applicative.toSeqRight : SeqRight f
+-- fields:
+--   Functor.map : {α β : Type u} → (α → β) → f α → f β :=
+--     fun {α β} x y => pure x <*> y
+--   Functor.mapConst : {α β : Type u} → α → f β → f α :=
+--     fun {α β} => Functor.map ∘ Function.const β
+--   Pure.pure : {α : Type u} → α → f α
+--   Seq.seq : {α β : Type u} → f (α → β) → (Unit → f α) → f β
+--   SeqLeft.seqLeft : {α β : Type u} → f α → (Unit → f β) → f α :=
+--     fun {α β} a b => Function.const β <$> a <*> b ()
+--   SeqRight.seqRight : {α β : Type u} → f α → (Unit → f β) → f β :=
+--     fun {α β} a b => Function.const α id <$> a <*> b ()
+-- constructor:
+--   Applicative.mk.{u, v} {f : Type u → Type v} [toFunctor : Functor f] [toPure : Pure f] [toSeq : Seq f]
+--     [toSeqLeft : SeqLeft f] [toSeqRight : SeqRight f] : Applicative f
+-- field notation resolution order:
+--   Applicative, Functor, Pure, Seq, SeqLeft, SeqRight
+
+example [SeqRight t] (e1 e2 : t α) : e1 *> e2 = SeqRight.seqRight e1 (fun () => e2) := rfl
+
+example [Monad t] [LawfulMonad t] (e1 e2 : t α) : e1 *> e2 = (do let _ ← e1; e2) :=
+  seqRight_eq_bind e1 e2
+
+example [SeqLeft t] (e1 e2 : t α) : e1 <* e2 = SeqLeft.seqLeft e1 (fun () => e2) := rfl
+
+example [Monad t] [LawfulMonad t] (e1 e2 : t α) : e1 <* e2 = (do let x ← e1; _ ← e2; pure x) :=
+  seqLeft_eq_bind e1 e2
+
+-- 5.6.3 Monad
+
+#print Bind
+-- class Bind.{u, v} (m : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- fields:
+--   Bind.bind : {α β : Type u} → m α → (α → m β) → m β
+-- constructor:
+--   Bind.mk.{u, v} {m : Type u → Type v} (bind : {α β : Type u} → m α → (α → m β) → m β) : Bind m
+
+#print Monad
+-- class Monad.{u, v} (m : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 1
+-- parents:
+--   Monad.toApplicative : Applicative m
+--   Monad.toBind : Bind m
+-- fields:
+--   Functor.map : {α β : Type u} → (α → β) → m α → m β :=
+--     fun {α β} f x => x >>= pure ∘ f
+--   Functor.mapConst : {α β : Type u} → α → m β → m α :=
+--     fun {α β} => Functor.map ∘ Function.const β
+--   Pure.pure : {α : Type u} → α → m α
+--   Seq.seq : {α β : Type u} → m (α → β) → (Unit → m α) → m β :=
+--     fun {α β} f x => do
+--       let y ← f
+--       y <$> x ()
+--   SeqLeft.seqLeft : {α β : Type u} → m α → (Unit → m β) → m α :=
+--     fun {α β} x y => do
+--       let a ← x
+--       let _ ← y ()
+--       pure a
+--   SeqRight.seqRight : {α β : Type u} → m α → (Unit → m β) → m β :=
+--     fun {α β} x y => do
+--       let _ ← x
+--       y ()
+--   Bind.bind : {α β : Type u} → m α → (α → m β) → m β
+-- constructor:
+--   Monad.mk.{u, v} {m : Type u → Type v} [toApplicative : Applicative m] [toBind : Bind m] : Monad m
+-- field notation resolution order:
+--   Monad, Applicative, Bind, Functor, Pure, Seq, SeqLeft, SeqRight
+
+-- 5.6.4 Exercises
+
+-- 1. Understand the default implementations of `map`, `seq`, `seqLeft`, and `seqRight` in
+--    `Monad` by working through examples such as `Option` and `Except`. In other words,
+--    substitute their definitions for `bind` and `pure` into the default definitions, and
+--    simplify them to recover the versions `map`, `seq`, `seqLeft`, and `seqRight` that
+--    would be written by hand.
+
+-- Option --
+
+instance : Monad Option where
+  pure := some
+  bind
+    | none, _ => none
+    | some x, f => f x
+
+-- instance : Functor Option where
+--   map f x := x >>= fun x => pure (f x)
+
+example (x : Option α) : f <$> x = x >>= fun x => pure (f x) := by
+  simp [Functor.map, Bind.bind, Option.map];
+  split <;> trivial
+
+-- instance : SeqLeft Option where
+--   seqLeft x y := x >>= fun _ => y () >>= fun _ => x
+
+example (x : Option α) : x <* y = x >>= fun _ => y >>= fun _ => x := by
+  simp [SeqLeft.seqLeft, Bind.bind, Option.bind];
+  split <;> trivial
+
+-- instance : SeqRight Option where
+--   seqRight x y := x >>= fun _ => y () >>= fun y => y
+
+example (x : Option α) : x *> y = x >>= fun _ => y >>= fun _ => y := by
+  simp [SeqRight.seqRight, Bind.bind, Option.bind];
+  split
+  . rfl
+  . split <;> first | trivial | (split <;> rfl)
+
+-- instance : Seq Option where
+--   seq f x := f >>= fun f => x () >>= fun x => pure (f x)
+
+example (x : Option α) : f <*> x = f >>= fun f => x >>= fun x => pure (f x) := by
+  simp [Seq.seq, Bind.bind]
+
+-- Excpet ε --
+
+instance : Monad (Except ε) where
+  pure := .ok
+  bind
+    | .error err, _ => .error err
+    | .ok x, f => f x
+
+-- instance : Functor (Excpet ε) where
+--   map f x := x >>= fun x => pure (f x)
+
+example (x : Except ε α) : f <$> x = x >>= fun x => pure (f x) := by
+  simp [Functor.map, Bind.bind];
+  split <;> trivial
+
+-- instance : SeqLeft (Excpet ε) where
+--   seqLeft x y := x >>= fun _ => y () >>= fun _ => x
+
+example (x : Except ε α) : x <* y = x >>= fun _ => y >>= fun _ => x := by
+  simp [SeqLeft.seqLeft, Bind.bind, Except.bind];
+  split <;> first | trivial | (split <;> rfl)
+
+-- instance : SeqRight (Except ε) where
+--   seqRight x y := x >>= fun _ => y () >>= fun y => y
+
+example (x : Except ε α) : x *> y = x >>= fun _ => y >>= fun _ => y := by
+  simp [SeqRight.seqRight, Bind.bind];
+  split
+  . rfl
+  . split <;> first | trivial | (split <;> rfl)
+
+-- instance : Seq (Except ε) where
+--   seq f x := f >>= fun f => x () >>= fun x => pure (f x)
+
+example (x : Except ε α) : f <*> x = f >>= fun f => x >>= fun x => pure (f x) := by
+  simp [Seq.seq, Bind.bind]
+
+-- 2. Prove that the default implementations of `map` and `seq` satisfy the contracts for
+--    `Functor` and `Applicative`. In this argument, you're allowed to use the rules from
+--    the `Monad` contract as well as ordinary expression evaluation.
+
+#print FunctorContract
+-- map_identity : ∀ {α : Type u} (x : f α), id <$> x = x
+-- map_composition : ∀ {α β γ : Type u} (x : f α) (g : α → β) (h : β → γ), (h ∘ g) <$> x = h <$> g <$> x
+
+#print LawfulApplicative
+-- pure_seq : ∀ {α β : Type u} (g : α → β) (x : f α), pure g <*> x = g <$> x
+-- map_pure : ∀ {α β : Type u} (g : α → β) (x : α), g <$> pure x = pure (g x)
+-- seq_pure : ∀ {α β : Type u} (g : f (α → β)) (x : α), g <*> pure x = (fun h => h x) <$> g
+-- seq_assoc :
+--   ∀ {α β γ : Type u} (x : f α) (g : f (α → β)) (h : f (β → γ)), h <*> (g <*> x) = Function.comp <$> h <*> g <*> x
+
+theorem default_map [i : Monad m] [l : LawfulMonad m]
+    : i.map f x = x >>= i.pure ∘ f := by
+  rw [←l.bind_pure_comp, Bind.bind]; trivial
+
+theorem default_map_id [i : Monad m] [l : LawfulMonad m]
+    : i.map id x = id <$> x := by
+  simp [Functor.map, Seq.seq]
+
+theorem default_map_comp [i : Monad m] [l : LawfulMonad m]
+    : i.map (g ∘ f) x = g <$> f <$> x := by
+  simp [Functor.map, Seq.seq, l.comp_map]
+
+theorem default_seq [i : Monad m] [l : LawfulMonad m]
+    : i.seq f x = (do let y ← f; y <$> x ()) := by
+  simp [Functor.map, Seq.seq, l.bind_map, l.pure_seq]
+
+theorem default_seq_pure_seq [i : Monad m] [l : LawfulMonad m]
+    : i.pure f <*> x = f <$> x := by
+  simp [Functor.map, Seq.seq, l.bind_map, l.pure_seq]
+
+theorem default_seq_map_pure [i : Monad m] [l : LawfulMonad m]
+    : f <$> i.pure x = pure (f x) := by
+  simp [Functor.map, Seq.seq]
+
+theorem default_seq_seq_pure [i : Monad m] [l : LawfulMonad m]
+    : f <*> i.pure x = (· x) <$> f := by
+  simp [Functor.map, Seq.seq, l.bind_map, l.pure_seq]
+
+theorem default_seq_seq_assoc [i : Monad m] [l : LawfulMonad m]
+    : g <*> (f <*> x : m _) = Function.comp <$> g <*> f <*> x := by
+  simp [Functor.map, Seq.seq, l.bind_map, l.pure_seq, l.seq_assoc]
