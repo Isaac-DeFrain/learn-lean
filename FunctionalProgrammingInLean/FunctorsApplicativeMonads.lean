@@ -1134,9 +1134,30 @@ example (x : Except ε α) : f <*> x = f >>= fun f => x >>= fun x => pure (f x) 
 --    `Functor` and `Applicative`. In this argument, you're allowed to use the rules from
 --    the `Monad` contract as well as ordinary expression evaluation.
 
-#print FunctorContract
--- map_identity : ∀ {α : Type u} (x : f α), id <$> x = x
--- map_composition : ∀ {α β γ : Type u} (x : f α) (g : α → β) (h : β → γ), (h ∘ g) <$> x = h <$> g <$> x
+-- map --
+
+#print LawfulFunctor
+-- map_const : ∀ {α β : Type u}, Functor.mapConst = Functor.map ∘ Function.const β
+-- id_map : ∀ {α : Type u} (x : f α), id <$> x = x
+-- comp_map : ∀ {α β γ : Type u} (g : α → β) (h : β → γ) (x : f α), (h ∘ g) <$> x = h <$> g <$> x
+
+theorem default_map [i : Monad m] [l : LawfulMonad m]
+    : i.map f x = x >>= i.pure ∘ f := by
+  rw [←l.bind_pure_comp, Bind.bind]; trivial
+
+theorem default_map_map_const [i : Monad m] [l : LawfulMonad m]
+    : i.mapConst = (Function.comp i.map (Function.const β) : α → m β → m α) := by
+  apply l.map_const
+
+theorem default_map_id_map [i : Monad m] [l : LawfulMonad m]
+    : i.map id x = id <$> x := by
+  simp [Functor.map, Seq.seq]
+
+theorem default_map_comp_map [i : Monad m] [l : LawfulMonad m]
+    : i.map (g ∘ f) x = g <$> f <$> x := by
+  simp [Functor.map, Seq.seq, l.comp_map]
+
+-- seq --
 
 #print LawfulApplicative
 -- pure_seq : ∀ {α β : Type u} (g : α → β) (x : f α), pure g <*> x = g <$> x
@@ -1144,18 +1165,6 @@ example (x : Except ε α) : f <*> x = f >>= fun f => x >>= fun x => pure (f x) 
 -- seq_pure : ∀ {α β : Type u} (g : f (α → β)) (x : α), g <*> pure x = (fun h => h x) <$> g
 -- seq_assoc :
 --   ∀ {α β γ : Type u} (x : f α) (g : f (α → β)) (h : f (β → γ)), h <*> (g <*> x) = Function.comp <$> h <*> g <*> x
-
-theorem default_map [i : Monad m] [l : LawfulMonad m]
-    : i.map f x = x >>= i.pure ∘ f := by
-  rw [←l.bind_pure_comp, Bind.bind]; trivial
-
-theorem default_map_id [i : Monad m] [l : LawfulMonad m]
-    : i.map id x = id <$> x := by
-  simp [Functor.map, Seq.seq]
-
-theorem default_map_comp [i : Monad m] [l : LawfulMonad m]
-    : i.map (g ∘ f) x = g <$> f <$> x := by
-  simp [Functor.map, Seq.seq, l.comp_map]
 
 theorem default_seq [i : Monad m] [l : LawfulMonad m]
     : i.seq f x = (do let y ← f; y <$> x ()) := by
