@@ -20,6 +20,10 @@ globs = ["FunctionalProgrammingInLean.+"]
 name = "feline"
 root = "FunctionalProgrammingInLean.Feline"
 
+[[lean_exe]]
+name = "doug"
+root = "FunctionalProgrammingInLean.Doug"
+
 [[lean_lib]]
 name = "LambdaCalculus"
 globs = ["LambdaCalculus.+"]

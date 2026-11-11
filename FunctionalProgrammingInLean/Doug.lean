@@ -4,16 +4,22 @@ import FunctionalProgrammingInLean.OverloadingAndTypeClasses
 
 structure Config where
   useASCII : Bool := false
+  showDotFiles : Bool := false
   currentPrefix : String := ""
 
 def usage : String :=
-  "Usage: doug [--ascii]
+  "Usage: doug [-a] [--ascii] [DIR]
 Options:
-\t--ascii\tUse ASCII characters to display the directory structure"
+\t-a\tShow all files, including dotfiles
+\t--ascii\tUse ASCII characters to display the directory structure
+\tDIR\tDirectory to start recursive crawl from"
 
-def configFromArgs : List String → Option Config
-  | [] => some {}                             -- both fields default
-  | ["--ascii"] => some { useASCII := true }  -- currentPrefix default
+def configFromArgs (args : List String) : Option Config :=
+  match args.toArray.qsort with
+  | #[] => some {}
+  | #["--ascii"] => some { useASCII := true }
+  | #["-a"] => some { showDotFiles := true }
+  | #["--ascii", "-a"] => some { useASCII := true, showDotFiles := true }
   | _ => none
 
 -- use reader instance to pass config
@@ -43,12 +49,15 @@ inductive Entry where
 
 -- want to skip files named `.` or `..`
 
-def toEntry (path : System.FilePath) : IO (Option Entry) := do
+def toEntry (path : System.FilePath) : ConfigIO (Option Entry) := do
   match path.components.getLast? with
   | none => pure <| some <| .dir ""
   | some "." | some ".." => pure none
   | some name =>
-    pure <| some <| if (← path.isDir) then .dir name else .file name
+    if name.startsWith '.' && !(← read).showDotFiles then
+      pure none
+    else
+      pure <| some <| if (← path.isDir) then .dir name else .file name
 
 def dirLT (e1 : IO.FS.DirEntry) (e2 : IO.FS.DirEntry) : Bool :=
   e1.fileName < e2.fileName
@@ -94,15 +103,26 @@ partial def dirTree (path : System.FilePath) : ConfigIO Unit := do
       doList (contents.qsort dirLT).toList fun d =>
         dirTree d.path
 
-def main (args : List String) : IO UInt32 := do
-  if args == ["--help"] then
-    IO.println usage
+def startingDir (args : List String) : IO System.FilePath := do
+  let nonOptionArgs := args.filter (fun arg => arg != "--ascii" && arg != "-a")
+  match nonOptionArgs with
+  | "." :: _ => IO.currentDir
+  | dir :: _ => pure (dir.dropEndWhile (· == '/')).copy
+  | _ => IO.currentDir
 
-  match configFromArgs args with
-  | some config =>
-    (dirTree (← IO.currentDir)).run config
+def main (args : List String) : IO UInt32 := do
+  if args.contains "--help" then
+    IO.println usage
     pure 0
-  | none =>
-    IO.eprintln s!"Didn't understand argument(s) {args.separate " "}\n"
-    IO.eprintln usage
-    pure 1
+  else
+    let options := args.filter (fun arg => arg == "--ascii" || arg == "-a")
+    let startingDir := startingDir args
+
+    match configFromArgs options with
+    | some config =>
+      (dirTree (← startingDir)).run config
+      pure 0
+    | none =>
+      IO.eprintln s!"Didn't understand argument(s) {args.separate " "}\n"
+      IO.eprintln usage
+      pure 1
