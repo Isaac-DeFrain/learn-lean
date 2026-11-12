@@ -27,7 +27,7 @@ Interlude: Propositions, Proofs, and Indexing
 3. [Overloading and Type Classes](/FunctionalProgrammingInLean/OverloadingAndTypeClasses.lean)
 4. [Monads](/FunctionalProgrammingInLean/Monads.lean)
 5. [Functors, Applicative Functors, and Monads](/FunctionalProgrammingInLean/FunctorsApplicativeMonads.lean)
-6. Monad Transformers
+6. [Monad Transformers](/FunctionalProgrammingInLean/MonadTransformers.lean)
 7. Programming with Dependent Types
 Interlude: Tactics, Induction, and Proofs
 8. Programming, Proving, and Performance
@@ -41,16 +41,16 @@ $$
 proj \equiv λu : *. \ λv : (u → *) . \ λw : * . \ λz : (Πx : u . \ v x → w) . \ λy : (Πx : u . \ v x) . \ y w z
 $$
 
-This definition is incorrect as it does not type check in [`lean4`](https://github.com/leanprover/lean4). I played around with it until I got it to satisfy the properties expressed on pg. 213, lines 10 and 12.
+This definition is incorrect as it does not type check in [`lean4`](https://github.com/leanprover/lean4). I played around with it until I got it to satisfy the properties expressed on pg. 213, lines 10 and 12:
 
 $$
-proj \ u v w z (D' u v x y) : w
+proj \ u \ v \ w \ z \ (D' u v x y) : w
 $$
 
 and
 
 $$
-proj \ u v w z (D' u v x y) =_β zxy
+proj \ u \ v \ w \ z \ (D' u v x y) =_β z \ x \ y
 $$
 
 I propose the correction:
@@ -65,8 +65,26 @@ $$
 
 Install lean4 via the [nix flake](./flake.nix).
 
+### Lambda Calculus and Combinators Errata
+
 Execute the code / check the proofs:
 
 ```shell
 lake exe errata
+```
+
+### Functional Programming in Lean: `feline`
+
+See [Feline.lean](/FunctionalProgrammingInLean/Feline.lean)
+
+```shell
+lake exe feline --help
+```
+
+### Functional Programming in Lean: `doug`
+
+See [Doug.lean](/FunctionalProgrammingInLean/Doug.lean)
+
+```shell
+lake -q exe doug --help
 ```
