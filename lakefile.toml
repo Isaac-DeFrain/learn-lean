@@ -9,6 +9,10 @@ defaultTargets = [
 builtinLint = true
 
 [[lean_lib]]
+name = "LambdaCalculus"
+globs = ["LambdaCalculus.+"]
+
+[[lean_lib]]
 name = "TheoremProvingInLean"
 globs = ["TheoremProvingInLean.+"]
 
@@ -16,17 +20,15 @@ globs = ["TheoremProvingInLean.+"]
 name = "FunctionalProgrammingInLean"
 globs = ["FunctionalProgrammingInLean.+"]
 
+# Part of §2 Hello World
 [[lean_exe]]
 name = "feline"
 root = "FunctionalProgrammingInLean.Feline"
 
+# Part of §6 Monad Transformers
 [[lean_exe]]
 name = "doug"
 root = "FunctionalProgrammingInLean.Doug"
-
-[[lean_lib]]
-name = "LambdaCalculus"
-globs = ["LambdaCalculus.+"]
 
 [[lean_exe]]
 name = "errata"
