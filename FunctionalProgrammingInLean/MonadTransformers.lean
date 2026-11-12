@@ -124,3 +124,115 @@ def locally (change : Config → Config) (action : ConfigIO α) : ConfigIO α :=
 -- 6.1.4.2 Starting Directory as Argument
 
 -- see ./Doug.lean
+
+-- 6.2 A Monad Construction Kit
+
+-- each monad transformer consists of:
+-- 1. a defintion or datatype `T` that takes a monad as an argument
+-- 2. a monad instance for `T m` that relies on a monad instance for `m`
+-- 3. a MonadLift instance that translates actions of type `m α` into actions of type `T m α`
+
+-- also
+-- 1. `LawfulMonad m` should imply `LawfulMonad (T m)`
+-- 2. `monadLift (pure x : m α)` should be equivalent to `pure x : T m α`
+-- 3. `monadLift (x >>= f : m α)` should be the same as `(monadLift x : m α) >>= fun y => monadLift (f y)`
+
+-- many monad transformers also define type classes in the style of `MonadReader` that
+-- describe the actual effects available in the monad
+
+-- 6.2.1 Failure with `OptionT`
+
+#print OptionT
+-- @[implicit_reducible] def OptionT.{u, v} : (Type u → Type v) → Type u → Type v :=
+-- fun m α => m (Option α)
+
+structure UserInfo where
+  name : String
+  favBeetle : String
+
+def getUserInput : OptionT IO String := do
+  let input ← (← IO.getStdin).getLine
+  let trimmed := input.trimAscii
+  if trimmed.isEmpty then
+    failure
+  else
+    pure trimmed.copy
+
+def getUserInfo : OptionT IO UserInfo := do
+  IO.println "What is your name?"
+  let name ← getUserInput
+  IO.println "What is your favorite beetle"
+  let favBeetle ← getUserInput
+  pure ⟨name, favBeetle⟩
+
+def interact : IO Unit := do
+  match ← getUserInfo with
+  | none => IO.eprintln "Missing info"
+  | some ⟨name, favBeetle⟩ =>
+    IO.println s!"Hello {name}, whose favorite beetle is {favBeetle}"
+
+-- 6.2.1.1 The Monad Instance
+
+-- Lean selects the wrong monad instance so we need to provide `: m (Option _)`
+instance [Monad m] : Monad (OptionT m) where
+  pure x := (pure <| some x : m (Option _))
+  bind action next := (do
+    match ← action with
+    | none => pure none
+    | some x => next x : m (Option _))
+
+-- to avoid this noise, we use `OptionT.mk` instead
+
+instance [Monad m] : Monad (OptionT m) where
+  pure x := OptionT.mk <| pure <| some x
+  bind action next := OptionT.mk do
+    match ← action with
+    | none => pure none
+    | some x => next x
+
+-- check monad contract
+
+instance [i : Monad m] [l : LawfulMonad m] : LawfulMonad (OptionT m) where
+  bind_pure_comp f x := by
+    simp [Bind.bind, Pure.pure, Functor.map, OptionT.mk]
+    apply bind_congr
+    intro a
+    cases a <;> rfl
+  bind_map f x := by
+    simp [Bind.bind, Functor.map, OptionT.mk]
+    apply bind_congr
+    intro a
+    cases a <;> rfl
+  pure_bind x f := by
+    simp [Bind.bind, Pure.pure, OptionT.mk]
+  bind_assoc x f g := by
+    simp [Bind.bind, OptionT.mk]
+    apply bind_congr
+    intro a
+    cases a <;> simp
+  seqLeft_eq x y := by
+    simp [Functor.map, Seq.seq, OptionT.bind, OptionT.mk, OptionT.pure]
+    apply bind_congr
+    intro a
+    cases a <;> simp [OptionT.bind, OptionT.mk]; rfl
+  seqRight_eq x y := by
+    simp [Functor.map, Seq.seq, OptionT.bind, OptionT.mk, OptionT.pure]
+    apply bind_congr
+    intro a
+    cases a <;> simp
+    refine (bind_pure (m := m) y.run).symm.trans ?_
+    apply bind_congr
+    intro b
+    cases b <;> rfl
+  map_const := rfl
+  id_map x := by
+    simp [Functor.map, OptionT.bind, OptionT.mk, OptionT.pure]
+    apply Eq.symm
+    refine (bind_pure (m := m) x.run).symm.trans ?_
+    apply bind_congr
+    intro b
+    cases b <;> rfl
+  pure_seq g x := by
+    simp [Functor.map, Seq.seq, Pure.pure, OptionT.bind, OptionT.mk, OptionT.pure]
+
+-- 6.2.1.2 An `Alternative` Instance
