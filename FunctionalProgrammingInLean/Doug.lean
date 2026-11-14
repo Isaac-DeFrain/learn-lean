@@ -30,9 +30,6 @@ instance : Monad ConfigIO where
   pure x := fun _ => pure x
   bind action next := fun cfg => do next (← action cfg) cfg
 
-def ConfigIO.run (action : ConfigIO α) (cfg : Config) : IO α :=
-  action cfg
-
 instance [Monad m] : MonadReader ρ (ReaderT ρ m) where
   read := pure
 
@@ -47,9 +44,26 @@ inductive Entry where
   | file : String → Entry
   | dir : String → Entry
 
+structure EntryCount where
+  files : Nat
+  dirs : Nat
+
+instance : Zero EntryCount where
+  zero := {files := 0, dirs := 0}
+
+abbrev StateConfigIO (α : Type) : Type := StateT EntryCount ConfigIO α
+
+instance : MonadState EntryCount StateConfigIO where
+  get := fun count => pure (count, count)
+  set count := fun _ => pure (⟨⟩, count)
+  modifyGet modify := pure ∘ modify
+
+def StateConfigIO.run (action : StateConfigIO α) (count : EntryCount) (cfg : Config) : IO (α × EntryCount) :=
+  action count cfg
+
 -- want to skip files named `.` or `..`
 
-def toEntry (path : System.FilePath) : ConfigIO (Option Entry) := do
+def toEntry (path : System.FilePath) : StateConfigIO (Option Entry) := do
   match path.components.getLast? with
   | none => pure <| some <| .dir ""
   | some "." | some ".." => pure none
@@ -92,16 +106,22 @@ def doList [Applicative f] : List α → (α → f Unit) → f Unit
 /--
 Draws the directory tree
 -/
-partial def dirTree (path : System.FilePath) : ConfigIO Unit := do
+partial def dirTree (path : System.FilePath) : StateConfigIO Unit := do
   match ← toEntry path with
   | none => pure ()
-  | some (.file name) => showFileName name
+  | some (.file name) =>
+    modify fun count => {count with files := count.files + 1}
+    showFileName name
   | some (.dir name) =>
+    modify fun count => {count with dirs := count.dirs + 1}
     showDirName name
     let contents ← path.readDir
     withReader (·.inDirectory) <|
       doList (contents.qsort dirLT).toList fun d =>
         dirTree d.path
+
+def printCount (count : EntryCount) : IO Unit :=
+  IO.println s!"  Viewed {count.files} files in {count.dirs} directories."
 
 def startingDir (args : List String) : IO System.FilePath := do
   let nonOptionArgs := args.filter (fun arg => arg != "--ascii" && arg != "-a")
@@ -120,7 +140,8 @@ def main (args : List String) : IO UInt32 := do
 
     match configFromArgs options with
     | some config =>
-      (dirTree (← startingDir)).run config
+      let (_, count) ← (dirTree (← startingDir)).run 0 config
+      printCount count
       pure 0
     | none =>
       IO.eprintln s!"Didn't understand argument(s) {args.separate " "}\n"

@@ -192,7 +192,7 @@ instance [Monad m] : Monad (OptionT m) where
 
 -- check monad contract
 
-instance [i : Monad m] [l : LawfulMonad m] : LawfulMonad (OptionT m) where
+instance [Monad m] [LawfulMonad m] : LawfulMonad (OptionT m) where
   bind_pure_comp f x := by
     simp [Bind.bind, Pure.pure, Functor.map, OptionT.mk]
     apply bind_congr
@@ -426,3 +426,199 @@ def countLetters (str : String) : StateT LetterCounts (Except LetterCounts.Err) 
 -- constructor:
 --   MonadState.mk.{u, v} {σ : outParam (Type u)} {m : Type u → Type v} (get : m σ) (set : σ → m PUnit)
 --     (modifyGet : {α : Type u} → (σ → α × σ) → m α) : MonadState σ m
+
+-- 6.2.4 `Of` Classes and `The` Functions
+
+-- for more complex monad with multiple types of state or exceptions, the output parameters of
+-- `StateT`, `ReaderT`, and `ExceptT` make it impossible to target multiple types or state or
+-- exceptions in the same `do`-block
+
+-- `...` with semi-output parameter type: `...Of`
+
+#print MonadStateOf
+-- class MonadStateOf.{u, v} (σ : semiOutParam (Type u)) (m : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 2
+-- fields:
+--   MonadStateOf.get : m σ
+--   MonadStateOf.set : σ → m PUnit
+--   MonadStateOf.modifyGet : {α : Type u} → (σ → α × σ) → m α
+-- constructor:
+--   MonadStateOf.mk.{u, v} {σ : semiOutParam (Type u)} {m : Type u → Type v} (get : m σ) (set : σ → m PUnit)
+--     (modifyGet : {α : Type u} → (σ → α × σ) → m α) : MonadStateOf σ m
+
+#print MonadReaderOf
+-- class MonadReaderOf.{u, v} (ρ : semiOutParam (Type u)) (m : Type u → Type v) : Type v
+-- number of parameters: 2
+-- fields:
+--   MonadReaderOf.read : m ρ
+-- constructor:
+--   MonadReaderOf.mk.{u, v} {ρ : semiOutParam (Type u)} {m : Type u → Type v} (read : m ρ) : MonadReaderOf ρ m
+
+#print MonadExceptOf
+-- class MonadExceptOf.{u, v, w} (ε : semiOutParam (Type u)) (m : Type v → Type w) : Type (max (max u (v + 1)) w)
+-- number of parameters: 2
+-- fields:
+--   MonadExceptOf.throw : {α : Type v} → ε → m α
+--   MonadExceptOf.tryCatch : {α : Type v} → m α → (ε → m α) → m α
+-- constructor:
+--   MonadExceptOf.mk.{u, v, w} {ε : semiOutParam (Type u)} {m : Type v → Type w} (throw : {α : Type v} → ε → m α)
+--     (tryCatch : {α : Type v} → m α → (ε → m α) → m α) : MonadExceptOf ε m
+
+-- `semiOutParam` not needed in order to start the process of instance search, but unlike an
+-- `outParam`, it is not ignored during instance search
+
+-- if an `outParam` is known prior to instance search, Lean simply checks that the result of
+-- the search is the same as what is known
+
+-- is a `semiOutParam` is known prior to instance search, Lean can use it to narrow down the
+-- search, just like an input parameter
+
+-- versions of type class methods that take the extra info as _explicit_
+
+#print getThe
+-- @[reducible] def getThe.{u, v} : (σ : Type u) → {m : Type u → Type v} → [MonadStateOf σ m] → m σ :=
+-- fun σ {m} [MonadStateOf σ m] => MonadStateOf.get
+
+#print modifyThe
+-- @[reducible] def modifyThe.{u, v} : (σ : Type u) → {m : Type u → Type v} → [MonadStateOf σ m] → (σ → σ) → m PUnit :=
+-- fun σ {m} [MonadStateOf σ m] f => MonadStateOf.modifyGet fun s => (PUnit.unit, f s)
+
+-- implementing the `Of` version of the type class yields versions of both
+
+-- generally a good idea to implement the `Of` versions and write programs using the non-`Of`
+-- versions, until it becomes necessary to use the `Of` version
+
+-- 6.2.5 Transformers and `Id`
+
+example : StateT σ Id α = (σ → (α × σ)) := rfl
+
+-- 6.2.6 Exercises
+
+-- 6.2.6.1 Monad Contract
+-- Check that the rules of the monad transformer contract are satisfied for each monad
+-- transformer in this section.
+
+-- ExceptT
+instance [Monad m] [LawfulMonad m] : LawfulMonad (ExceptT ε m) where
+  bind_pure_comp f x := by
+    simp [Bind.bind, Pure.pure, Functor.map, ExceptT.mk]
+    apply bind_congr
+    intro a
+    cases a <;> rfl
+  bind_map f x := by
+    simp [Bind.bind, Functor.map, ExceptT.mk]
+    apply bind_congr
+    intro a
+    cases a <;> rfl
+  pure_bind x f := by
+    simp [Bind.bind, Pure.pure, ExceptT.mk]
+  bind_assoc x f g := by
+    simp [Bind.bind, ExceptT.mk]
+    apply bind_congr
+    intro a
+    cases a <;> simp
+  seqLeft_eq x y := by
+    simp [Functor.map, Seq.seq, ExceptT.bind, ExceptT.mk, ExceptT.map]
+    apply bind_congr
+    intro a
+    cases a <;> simp [ExceptT.bind, ExceptT.mk, ExceptT.bindCont]; rfl
+  seqRight_eq x y := by
+    simp [Functor.map, Seq.seq, ExceptT.bind, ExceptT.mk, ExceptT.map]
+    apply bind_congr
+    intro a
+    cases a <;> simp [ExceptT.bindCont];
+    refine (bind_pure (m := m) y.run).symm.trans ?_
+    apply bind_congr
+    intro b
+    cases b <;> rfl
+  map_const := rfl
+  id_map x := by
+    simp [Functor.map, ExceptT.map, ExceptT.mk]
+    apply Eq.symm
+    refine (bind_pure (m := m) x.run).symm.trans ?_
+    apply bind_congr
+    intro b
+    cases b <;> rfl
+  pure_seq g x := by
+    simp [Functor.map, Seq.seq, Pure.pure, ExceptT.bind, ExceptT.mk, ExceptT.map, ExceptT.bindCont]
+
+-- StateT
+instance [Monad m] [LawfulMonad m] : LawfulMonad (StateT σ m) where
+  bind_pure_comp f x := by
+    simp [Bind.bind, Pure.pure]
+    funext s
+    simp [StateT.map, Functor.map]
+  bind_map f x := by
+    simp [Bind.bind, Functor.map]
+    funext s
+    simp [Seq.seq, StateT.map]
+    apply bind_congr
+    intro a
+    simp [StateT.map]
+  pure_bind x f := by
+    simp [Bind.bind, Pure.pure]
+  bind_assoc x f g := by
+    simp [Bind.bind]
+  seqLeft_eq x y := by
+    simp [Functor.map, Seq.seq, SeqLeft.seqLeft]
+    funext s
+    simp [StateT.bind, StateT.map, StateT.pure]
+  seqRight_eq x y := by
+    simp [Functor.map, Seq.seq, SeqRight.seqRight]
+    funext s
+    simp [StateT.bind, StateT.map]
+  map_const := rfl
+  id_map x := by
+    simp [Functor.map]
+    funext s
+    simp [StateT.map]
+  pure_seq g x := by
+    simp [Functor.map, Seq.seq, Pure.pure]
+    funext s
+    simp [StateT.bind]
+
+-- 6.2.6.2 Logging Transformer
+-- Define a monad transformer version of `WithLog`. Also define the corresponding type class
+-- `MonadWithLog`, and write a program that combines logging and exceptions.
+
+structure WithLog (log : Type u) (α : Type v) where
+  log : List log
+  val : α
+
+instance : Monad (WithLog log) where
+  pure x := { log := [], val := x }
+  bind result next :=
+    let { log := thisOut, val } := result
+    let { log := nextOut, val } := next val
+    { log := thisOut ++ nextOut, val }
+
+abbrev WithLogT (log : Type) (m : Type u → Type v) (α : Type u) : Type v :=
+  m (WithLog log α)
+
+def WithLogT.mk (x : m (WithLog log α)) : WithLogT log m α := x
+
+instance [Monad m] : Monad (WithLogT log m) where
+  pure x := WithLogT.mk ∘ pure <| pure x
+  bind result next := WithLogT.mk do
+    let { log := thisOut, val } ← result
+    let { log := nextOut, val } ← next val
+    pure { log := thisOut ++ nextOut, val }
+
+class MonadWithLog (log : outParam Type) (m : Type u → Type v) where
+  save : log → m PUnit
+
+instance [Monad m] : MonadWithLog log (WithLogT log m) where
+  save entry := WithLogT.mk <| pure { log := [entry], val := ⟨⟩ }
+
+instance [Monad m] : MonadLift m (WithLogT log m) where
+  monadLift x := WithLogT.mk do pure { log := [], val := ← x }
+
+instance [MonadLift m n] [MonadWithLog log m] : MonadWithLog log n where
+  save entry := MonadLift.monadLift (MonadWithLog.save entry : m _)
+
+-- 6.2.6.3 Counting Files
+-- Modify `doug`'s monad with `StateT` such that it counts the number of directories and files
+-- seen. At the end of execution, it should display a report like:
+--   Viewed 38 files in 5 directories.
+
+-- see /Doug.lean
