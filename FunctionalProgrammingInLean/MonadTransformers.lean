@@ -184,8 +184,8 @@ instance [Monad m] : Monad (OptionT m) where
 -- to avoid this noise, we use `OptionT.mk` instead
 
 instance [Monad m] : Monad (OptionT m) where
-  pure x := OptionT.mk <| pure <| some x
-  bind action next := OptionT.mk do
+  pure x := .mk ∘ pure <| some x
+  bind action next := .mk do
     match ← action with
     | none => pure none
     | some x => next x
@@ -236,3 +236,193 @@ instance [i : Monad m] [l : LawfulMonad m] : LawfulMonad (OptionT m) where
     simp [Functor.map, Seq.seq, Pure.pure, OptionT.bind, OptionT.mk, OptionT.pure]
 
 -- 6.2.1.2 An `Alternative` Instance
+
+-- convenient to use `OptionT` through the `Alternative` type class
+
+instance [Monad m] : Alternative (OptionT m) where
+  failure := .mk <| pure none
+  orElse x y := .mk do
+    match ← x with
+    | some res => pure (some res)
+    | none => y ()
+
+-- 6.2.1.3 Lifting
+
+-- lifting an action from monad `m` to `OptionT m` requires wrapping the result in `some`
+
+instance [Monad m] : MonadLift m (OptionT m) where
+  monadLift action := do
+    pure ∘ some <| ← action
+
+-- 6.2.2 Exceptions
+
+#print ExceptT
+-- @[implicit_reducible] def ExceptT.{u, v} : Type u → (Type u → Type v) → Type u → Type v :=
+-- fun ε m α => m (Except ε α)
+
+-- helpers to guide the type checker to the correct monad instances
+
+#print ExceptT.mk
+-- def ExceptT.mk.{u, v} : {ε : Type u} → {m : Type u → Type v} → {α : Type u} → m (Except ε α) → ExceptT ε m α :=
+-- fun {ε} {m} {α} x => x
+
+#print ExceptT.run
+-- def ExceptT.run.{u, v} : {ε : Type u} → {m : Type u → Type v} → {α : Type u} → ExceptT ε m α → m (Except ε α) :=
+-- fun {ε} {m} {α} x => x
+
+-- almost identical to `OptionT` except it propogates a specific error
+instance [Monad m] : Monad (ExceptT ε m) where
+  pure := .mk ∘ pure ∘ .ok
+  bind result next := .mk do
+    match ← result with
+    | .error e => pure <| .error e
+    | .ok x => next x
+
+-- unlike `Option`, `Except` is not typically used as a data structure, but rather as a control
+-- structure with its `Monad` instance so it is reasonsable to lift `Except ε` actions into
+-- `ExceptT ε m` as well as `m` actions
+
+-- lift exception into `ExceptT ε m`, just wrap in `m`'s `pure`
+instance [i : Monad m] : MonadLift (Except ε) (ExceptT ε m) where
+  monadLift := .mk ∘ i.pure
+
+-- lift `m` into `ExceptT ε m`, do not have exceptions, just map over with `Except.ok`
+instance [Monad m] : MonadLift m (ExceptT ε m) where
+  monadLift action := .mk <| .ok <$> action
+
+-- 6.2.2.1 Type Classes for Exceptions
+
+-- exception handling consists of two operations:
+-- 1. ability to throw an exception
+-- 2. ability to recover from an exception
+
+#print MonadExcept
+-- class MonadExcept.{u, v, w} (ε : outParam (Type u)) (m : Type v → Type w) : Type (max (max u (v + 1)) w)
+-- number of parameters: 2
+-- fields:
+--   MonadExcept.throw : {α : Type v} → ε → m α
+--   MonadExcept.tryCatch : {α : Type v} → m α → (ε → m α) → m α
+-- constructor:
+--   MonadExcept.mk.{u, v, w} {ε : outParam (Type u)} {m : Type v → Type w} (throw : {α : Type v} → ε → m α)
+--     (tryCatch : {α : Type v} → m α → (ε → m α) → m α) : MonadExcept ε m
+
+-- unlike `ExceptT`, `MonadExcept` imposes no constraints on the universe levels of `ε` and `α`
+-- beacuse exceptions are never used inside `m`
+
+-- example of program that uses `MonadExcept`: division service
+-- frontend: supplies user interface based on strings, handles errors
+-- backend: does the division, handles errors
+
+inductive Err where
+  | divByZero
+  | notANumber : String → Err
+
+-- backend checks for zero and divides if it can
+def divBackend [Monad m] [MonadExcept Err m] (n k : Int) : m Int :=
+  if k == 0 then
+    throw .divByZero
+  else pure (n / k)
+
+-- frontend helper
+def asNumber [Monad m] [MonadExcept Err m] (s : String) : m Int :=
+  match s.toInt? with
+  | none => throw <| .notANumber s
+  | some i => pure i
+
+def divFrontend [Monad m] [MonadExcept Err m] (n k : String) : m String :=
+  try
+    pure <| toString <| ← divBackend (← asNumber n) (← asNumber k)
+  catch
+      | .divByZero => pure "Division by zero!"
+      | .notANumber s => pure s!"Not a number: \"{s}\""
+
+-- useful `MonadExcept` instances for types that may not seem like exceptions at first glance
+
+-- e.g. instance of `MonadExcept Unit Option`
+def throwIfEmpty [ToString α] (xs : List α) : Option String :=
+  try
+    xs[0]?.map toString
+  catch
+    | () => some s!"Empty"
+
+#eval throwIfEmpty ([] : List Nat)
+-- some "Empty"
+
+#eval throwIfEmpty [42]
+-- some "42"
+
+-- 6.2.3 State
+
+#print StateT
+-- @[implicit_reducible] def StateT.{u, v} : Type u → (Type u → Type v) → Type u → Type (max u v) :=
+-- fun σ m α => σ → m (α × σ)
+
+instance [Monad m] : Monad (StateT σ m) where
+  pure x := fun s => pure (x, s)
+  bind x f := fun s => do
+    let (y, s') ← x s
+    f y s'
+
+#print MonadState
+-- class MonadState.{u, v} (σ : outParam (Type u)) (m : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 2
+-- fields:
+--   MonadState.get : m σ
+--   MonadState.set : σ → m PUnit
+--   MonadState.modifyGet : {α : Type u} → (σ → α × σ) → m α
+-- constructor:
+--   MonadState.mk.{u, v} {σ : outParam (Type u)} {m : Type u → Type v} (get : m σ) (set : σ → m PUnit)
+--     (modifyGet : {α : Type u} → (σ → α × σ) → m α) : MonadState σ m
+
+-- example program counts the number of diacritic-free English vowels and consonants
+-- in a string of letters
+
+structure LetterCounts where
+  vowels : Nat
+  consonants : Nat
+deriving Repr
+
+inductive LetterCounts.Err where
+  | notALetter : Char → Err
+deriving Repr
+
+def vowels :=
+  let lowerVowels := "aeiouy"
+  lowerVowels ++ lowerVowels.map (·.toUpper)
+
+def consonants :=
+  let lowerConsonants := "bcdfghjklmnpqrstvwxz"
+  lowerConsonants ++ lowerConsonants.map (·.toUpper)
+
+-- easy to confuse which state to `set`
+-- instead of `get`/`set`, use `modify`
+def countLetters (str : String) : StateT LetterCounts (Except LetterCounts.Err) Unit :=
+  let rec loop (chars : List Char) := do
+    match chars with
+    | [] => pure ()
+    | c :: cs =>
+      if c.isAlpha then
+        if vowels.contains c then
+          modify fun st => {st with vowels := st.vowels + 1}
+        else if consonants.contains c then
+          modify fun st => {st with consonants := st.consonants + 1}
+        else  -- modified or non-English letter
+          pure ()
+      else throw <| .notALetter c
+      loop cs
+  loop str.toList
+
+#print modify
+-- def modify.{u, v} : {σ : Type u} → {m : Type u → Type v} → [MonadState σ m] → (σ → σ) → m PUnit :=
+-- fun {σ} {m} [MonadState σ m] f => modifyGet fun s => (PUnit.unit, f s)
+
+#print MonadState
+-- class MonadState.{u, v} (σ : outParam (Type u)) (m : Type u → Type v) : Type (max (u + 1) v)
+-- number of parameters: 2
+-- fields:
+--   MonadState.get : m σ
+--   MonadState.set : σ → m PUnit
+--   MonadState.modifyGet : {α : Type u} → (σ → α × σ) → m α
+-- constructor:
+--   MonadState.mk.{u, v} {σ : outParam (Type u)} {m : Type u → Type v} (get : m σ) (set : σ → m PUnit)
+--     (modifyGet : {α : Type u} → (σ → α × σ) → m α) : MonadState σ m
