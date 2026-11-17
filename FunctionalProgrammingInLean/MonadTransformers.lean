@@ -1,12 +1,12 @@
-/- 6. Monad Transformers -/
+-- # 6. Monad Transformers
 
--- 6.1 Combining IO and Reader
+-- ## 6.1 Combining IO and Reader
 
 -- Reader monad is useful when there is some notion of "current configuration"
 
 -- `doug` - `tree`-like command line app
 
--- 6.1.1 Implementation
+-- ### 6.1.1 Implementation
 
 -- `doug` passes a config downwards as it recursively traverses the directory structure
 
@@ -20,7 +20,7 @@ structure Config where
   useASCII : Bool := false
   currentPrefix : String := ""
 
--- 6.1.2 Using a Custom Monad
+-- ### 6.1.2 Using a Custom Monad
 
 -- passing config around is verbose and error-prone, type system cannot catch errors
 -- use reader monad instance instead
@@ -53,7 +53,7 @@ def ConfigIO' (α : Type) : Type := Config → IO α
 -- 2. A Monad instance that assumes the inner type is already a monad
 -- 3. An operator to “lift” an action from the inner to the transformed monad, akin to `runIO`
 
--- 6.1.3 Adding a Read to any Monad
+-- ### 6.1.3 Adding a Read to any Monad
 
 #print ReaderT
 -- @[implicit_reducible] def ReaderT.{u, v} : Type u → (Type u → Type v) → Type u → Type (max u v) :=
@@ -111,9 +111,9 @@ def locally (change : Config → Config) (action : ConfigIO α) : ConfigIO α :=
 
 -- use instance of `MonadWithReader` instead
 
--- 6.1.4 Exercises
+-- ### 6.1.4 Exercises
 
--- 6.1.4.1 Controlling the Display of DotFiles
+-- #### 6.1.4.1 Controlling the Display of DotFiles
 -- Files whose names begin with a dot character ('.') typically represent files that should
 -- usually be hidden, such as source-control metadata and configuration files. Modify `doug`
 -- with an option to show or hide filenames that begin with a dot. This option should be
@@ -121,11 +121,11 @@ def locally (change : Config → Config) (action : ConfigIO α) : ConfigIO α :=
 
 -- see ./Doug.lean
 
--- 6.1.4.2 Starting Directory as Argument
+-- #### 6.1.4.2 Starting Directory as Argument
 
 -- see ./Doug.lean
 
--- 6.2 A Monad Construction Kit
+-- ### 6.2 A Monad Construction Kit
 
 -- each monad transformer consists of:
 -- 1. a defintion or datatype `T` that takes a monad as an argument
@@ -171,7 +171,7 @@ def interact : IO Unit := do
   | some ⟨name, favBeetle⟩ =>
     IO.println s!"Hello {name}, whose favorite beetle is {favBeetle}"
 
--- 6.2.1.1 The Monad Instance
+-- #### 6.2.1.1 The Monad Instance
 
 -- Lean selects the wrong monad instance so we need to provide `: m (Option _)`
 instance [Monad m] : Monad (OptionT m) where
@@ -235,7 +235,7 @@ instance [Monad m] [LawfulMonad m] : LawfulMonad (OptionT m) where
   pure_seq g x := by
     simp [Functor.map, Seq.seq, Pure.pure, OptionT.bind, OptionT.mk, OptionT.pure]
 
--- 6.2.1.2 An `Alternative` Instance
+-- #### 6.2.1.2 An `Alternative` Instance
 
 -- convenient to use `OptionT` through the `Alternative` type class
 
@@ -246,7 +246,7 @@ instance [Monad m] : Alternative (OptionT m) where
     | some res => pure (some res)
     | none => y ()
 
--- 6.2.1.3 Lifting
+-- #### 6.2.1.3 Lifting
 
 -- lifting an action from monad `m` to `OptionT m` requires wrapping the result in `some`
 
@@ -290,7 +290,7 @@ instance [i : Monad m] : MonadLift (Except ε) (ExceptT ε m) where
 instance [Monad m] : MonadLift m (ExceptT ε m) where
   monadLift action := .mk <| .ok <$> action
 
--- 6.2.2.1 Type Classes for Exceptions
+-- #### 6.2.2.1 Type Classes for Exceptions
 
 -- exception handling consists of two operations:
 -- 1. ability to throw an exception
@@ -351,7 +351,7 @@ def throwIfEmpty [ToString α] (xs : List α) : Option String :=
 #eval throwIfEmpty [42]
 -- some "42"
 
--- 6.2.3 State
+-- ### 6.2.3 State
 
 #print StateT
 -- @[implicit_reducible] def StateT.{u, v} : Type u → (Type u → Type v) → Type u → Type (max u v) :=
@@ -427,7 +427,7 @@ def countLetters (str : String) : StateT LetterCounts (Except LetterCounts.Err) 
 --   MonadState.mk.{u, v} {σ : outParam (Type u)} {m : Type u → Type v} (get : m σ) (set : σ → m PUnit)
 --     (modifyGet : {α : Type u} → (σ → α × σ) → m α) : MonadState σ m
 
--- 6.2.4 `Of` Classes and `The` Functions
+-- ### 6.2.4 `Of` Classes and `The` Functions
 
 -- for more complex monad with multiple types of state or exceptions, the output parameters of
 -- `StateT`, `ReaderT`, and `ExceptT` make it impossible to target multiple types or state or
@@ -488,13 +488,13 @@ def countLetters (str : String) : StateT LetterCounts (Except LetterCounts.Err) 
 -- generally a good idea to implement the `Of` versions and write programs using the non-`Of`
 -- versions, until it becomes necessary to use the `Of` version
 
--- 6.2.5 Transformers and `Id`
+-- ### 6.2.5 Transformers and `Id`
 
 example : StateT σ Id α = (σ → (α × σ)) := rfl
 
--- 6.2.6 Exercises
+-- ### 6.2.6 Exercises
 
--- 6.2.6.1 Monad Contract
+-- #### 6.2.6.1 Monad Contract
 -- Check that the rules of the monad transformer contract are satisfied for each monad
 -- transformer in this section.
 
@@ -577,7 +577,7 @@ instance [Monad m] [LawfulMonad m] : LawfulMonad (StateT σ m) where
     funext s
     simp [StateT.bind]
 
--- 6.2.6.2 Logging Transformer
+-- #### 6.2.6.2 Logging Transformer
 -- Define a monad transformer version of `WithLog`. Also define the corresponding type class
 -- `MonadWithLog`, and write a program that combines logging and exceptions.
 
@@ -616,9 +616,321 @@ instance [Monad m] : MonadLift m (WithLogT log m) where
 instance [MonadLift m n] [MonadWithLog log m] : MonadWithLog log n where
   save entry := MonadLift.monadLift (MonadWithLog.save entry : m _)
 
--- 6.2.6.3 Counting Files
+-- #### 6.2.6.3 Counting Files
 -- Modify `doug`'s monad with `StateT` such that it counts the number of directories and files
 -- seen. At the end of execution, it should display a report like:
 --   Viewed 38 files in 5 directories.
 
 -- see /Doug.lean
+
+-- ## 6.3 Ordering Monad Transformers
+
+-- different layerings of transformers result in different monads
+
+namespace Reorder
+
+open LetterCounts renaming Err → LCErr
+
+-- same as previous version, except using type classes `MonadState` and `MonadExcept`
+def countLetters [Monad m] [MonadState LetterCounts m] [MonadExcept LCErr m]
+    (str : String) : m Unit :=
+  let rec loop (chars : List Char) := do
+    match chars with
+    | [] => pure ()
+    | c :: cs =>
+      if c.isAlpha then
+        if vowels.contains c then
+          modify fun st => {st with vowels := st.vowels + 1}
+        else if consonants.contains c then
+          modify fun st => {st with consonants := st.consonants + 1}
+        else -- modified or non-English letter
+          pure ()
+      else throw <| .notALetter c
+      loop cs
+  loop str.toList
+
+-- state and exception monad transformers can be combined in two different orders
+abbrev M1 := StateT LetterCounts (ExceptT LCErr Id)
+abbrev M2 := ExceptT LCErr (StateT LetterCounts Id)
+
+-- outputs are subtlely different
+
+#eval (countLetters (m := M1) "hello" ⟨0, 0⟩ : Except _ _)
+-- Except.ok ((), { vowels := 2, consonants := 3 })
+
+#eval (countLetters (m := M2) "hello" ⟨0, 0⟩ : Except _ _ × _)
+-- (Except.ok (), { vowels := 2, consonants := 3 })
+
+-- only one returns a count when an exception is thrown
+
+#eval countLetters (m := M1) "hello!" ⟨0, 0⟩
+-- Except.error (LetterCounts.Err.notALetter '!')
+
+#eval countLetters (m := M2) "hello!" ⟨0, 0⟩
+-- (Except.error (LetterCounts.Err.notALetter '!'), { vowels := 2, consonants := 3 })
+
+-- if exceptions are handled, things can get confusing
+
+def countLettersWithFallback [Monad m] [MonadState LetterCounts m] [MonadExcept LCErr m]
+    (str : String) : m Unit :=
+  try
+    countLetters str
+  catch _ =>
+    countLetters "Fallback"
+
+-- in M1: throwing an exception “rolls back” the state to where the exception was caught
+-- in M2: modifications to the state persist across the throwing and catching of exceptions
+
+#eval countLettersWithFallback (m := M1) "hello!" ⟨0, 0⟩
+-- Except.ok ((), { vowels := 2, consonants := 6 })
+
+#eval countLettersWithFallback (m := M2) "hello!" ⟨0, 0⟩
+-- (Except.ok (), { vowels := 4, consonants := 9 })
+
+-- M1 α returns either an error or updated counts, no final state if exception thrown
+example : M1 α = (LetterCounts → Except LCErr (α × LetterCounts)) := rfl
+
+-- M2 α returns updated count paired with either an error or α, exceptions accompanied by state
+example : M2 α = (LetterCounts → (Except LCErr α × LetterCounts)) := rfl
+
+end Reorder
+
+-- ### 6.3.1 Commuting Monads
+
+-- monad transformers _commute_ if reordering does not change the meaning of the program
+-- `StateT` and `ExceptT` do not commute
+
+-- `StateT` commutes with itself
+example : StateT σ (StateT σ' Id) α = (σ → σ' → ((α × σ) × σ')) := rfl
+example : StateT σ' (StateT σ Id) α = (σ' → σ → ((α × σ') × σ)) := rfl
+
+-- ### 6.3.2 Exercises
+
+-- 1. Check that `ReaderT` and `StateT` commute by expanding their definitions and reasoning
+-- about the resulting types.
+
+example : ReaderT ρ (StateT σ Id) α = (ρ → σ → α × σ) := rfl
+example : StateT σ (ReaderT ρ Id) α = (σ → ρ → α × σ) := rfl
+
+-- `ReaderT` and `StateT` commute because inputs and outputs are the same
+
+-- 2. Do `ReaderT` and `ExceptT` commute? Check your answer by expanding their definitions
+-- and reasoning about the resulting types.
+
+example : ReaderT ρ (ExceptT ε Id) α = (ρ → Except ε α) := rfl
+example : ExceptT ε (ReaderT ρ Id) α = (ρ → Except ε α) := rfl
+
+-- `ReaderT` and `ExceptT` commute because inputs and outputs are the same
+
+-- 3. Construct a monad transformer `ManyT` based on the definition of `Many`, with a suitable
+-- `Alternative` instance. Check that it satisfies the `Monad` contract.
+
+inductive Many (α : Type u) where
+  | none : Many α
+  | more : α → (Unit → Many α) → Many α
+deriving Nonempty
+
+def Many.one (x : α) : Many α :=
+  .more x fun () => .none
+
+def Many.union : Many α → Many α → Many α
+  | .none, xs | xs, .none => xs
+  | .more x xs, ys => .more x fun () => (xs ()).union ys
+
+def Many.bind {α β} : Many α → (α → Many β) → Many β
+  | .none, _ => .none
+  | .more x xs, f => (f x).union <| bind (xs ()) f
+
+def Many.fromList : List α → Many α
+  | [] => .none
+  | x :: xs => .more x fun () => fromList xs
+
+def Many.takeAll : Many α → List α
+  | .none => []
+  | .more x xs => x :: (xs ()).takeAll
+
+def List.print [ToString α] : List α → IO Unit
+  | [] => pure ()
+  | x :: xs => do
+    IO.println x
+    xs.print
+
+-- helper theorems --
+
+theorem Many.union_none (m : Many α) : m.union .none = m := by
+  cases m <;> rfl
+
+theorem Many.more_union (x : α) (xs : Many α)
+    : (Many.more x fun () => Many.none).union xs = Many.more x fun () => xs := by
+  cases xs <;> simp [Many.union]
+
+theorem Many.union_assoc (a b c : Many α) :
+    (a.union b).union c = a.union (b.union c) := by
+  induction a with
+  | none => rfl
+  | more x xs ih =>
+    cases b <;> cases c <;> simp [Many.union, ih]
+
+theorem Many.bind_union (a b : Many α) (f : α → Many β) :
+    (a.union b).bind f = (a.bind f).union (b.bind f) := by
+  induction a with
+  | none => rfl
+  | more x xs ih =>
+    cases b with
+    | none => exact (Many.union_none _).symm
+    | more y ys => simp [Many.union, Many.bind, ih, Many.union_assoc]
+
+----
+
+instance : Monad Many where
+  pure := .one
+  bind := .bind
+
+def Many.orElse : Many α → (Unit → Many α) → Many α
+  | .none, xs => xs ()
+  | .more x xs, ys => .more x fun () => (xs ()).orElse ys
+
+instance : Alternative Many where
+  failure := .none
+  orElse := .orElse
+
+abbrev ManyT (m : Type u → Type v) (α : Type u) : Type v := m (Many α)
+
+def ManyT.mk (x : m (Many α)) : ManyT m α := x
+
+def Many.bindM [Monad m] (f : α → m (Many β)) : Many α → m (Many β)
+  | .none => pure .none
+  | .more x xs => do
+    let fx ← f x
+    let fxs ← (xs ()).bindM f
+    pure <| fx.union fxs
+
+def ManyT.bind [Monad m] (x : ManyT m α) (f : α → ManyT m β) : ManyT m β :=
+  .mk do (← x).bindM f
+
+instance [Monad m] : Monad (ManyT m) where
+  pure := .mk ∘ pure ∘ .one
+  bind := .bind
+
+instance [Monad m] : MonadLift m (ManyT m) where
+  monadLift x := .mk do pure <| .one (← x)
+
+def ManyT.choose [Monad m] (xs : List α) : ManyT m α :=
+  .mk ∘ pure <| .fromList xs
+
+instance : LawfulMonad Many :=
+  .mk' _
+  (id_map := fun x => by
+    simp [Functor.map]
+    induction x with
+    | none => rfl
+    | more _ _ ih =>
+      simp [Many.bind, Many.one, Many.more_union, ih])
+  (pure_bind := fun x f => by
+    show (Many.one x).bind f = f x
+    simp [Many.one, Many.bind, Many.union_none])
+  (bind_assoc := fun x f g => by
+    show (x.bind f).bind g = x.bind fun a => (f a).bind g
+    induction x with
+    | none => rfl
+    | more _ _ ih => simp [Many.bind, Many.bind_union, ih])
+
+-- `ManyT m` does not satify the monad contract even for `LawfulMonad m`, `m` would have to be comutative
+
+-- counterexample invalidate bind associativity
+def tag (s : String) (a : Nat) : ManyT (StateT (List String) Id) Nat :=
+  .mk do
+    modify (·.concat s!"{s}{a}")
+    pure <| .one a
+
+/-- info: ["f1", "f2", "g1", "g2"] -/
+#guard_msgs in
+#eval StateT.run (((ManyT.choose [1, 2]).bind (tag "f")).bind (tag "g")) [] |> (·.2)
+
+/-- info: ["f1", "g1", "f2", "g2"] -/
+#guard_msgs in
+#eval StateT.run ((ManyT.choose [1, 2]).bind fun a => (tag "f" a).bind (tag "g")) [] |> (·.2)
+
+-- helper
+theorem Many.bindM_pure_one [Monad m] [LawfulMonad m] (r : Many α) :
+    r.bindM (fun a => (pure (Many.one a) : m (Many α))) = pure r := by
+  induction r with
+  | none => rfl
+  | more a as ih =>
+    simp only [Many.bindM, pure_bind, ih]
+    simp [Many.one, Many.more_union]
+
+theorem ManyT.pure_bind [Monad m] [LawfulMonad m] (x : α) (f : α → ManyT m β) : pure x >>= f = f x := by
+    show (pure (Many.one x) >>= fun r => r.bindM f) = f x
+    simp [Many.one, Many.bindM, Many.union_none]
+
+theorem ManyT.bind_pure [Monad m] [LawfulMonad m] (x : ManyT m α) : x >>= pure = x := by
+  show x.bind (fun a => ManyT.mk (pure (Many.one a))) = x
+  simp [ManyT.bind, ManyT.mk, Many.bindM_pure_one]
+
+-- 4. Does `ManyT` commute with `StateT`? If so, check your answer by expanding definitions and
+-- reasoning about the resulting types. If not, write a program in `ManyT (StateT σ Id)` and
+-- a program in `StateT σ (ManyT Id)`. Each program should be one that makes more sense for
+-- the given ordering of monad transformers.
+
+example : ManyT (StateT σ Id) α = (σ → Many α × σ) := rfl   -- only preserves a single state for all `Many` elements
+example : StateT σ (ManyT Id) α = (σ → Many (α × σ)) := rfl -- preserves a state for each `Many` element
+
+-- `ManyT` and `StateT` do not commute
+
+-- `ManyT (StateT σ Id) α` program
+def distinctSums (xs : List Nat) : ManyT (StateT (List Nat) Id) Nat := do
+  let x ← .choose xs
+  let y ← .choose xs
+  let sums ← get
+  let sum := x + y
+  if sums.contains sum then
+    .mk <| pure .none
+  else
+    modify (sum :: ·)
+    pure sum
+
+/--
+info:
+2
+4
+6
+8
+10
+12
+14
+16
+18
+-/
+#guard_msgs in
+#eval ((distinctSums [1, 3, 5, 7, 9]).run' []).takeAll.print
+
+-- `StateT σ (ManyT Id) α` program
+example : ManyT Id = Many := rfl
+def evenAddsTo (goal : Nat) : List Nat → StateT (List Nat) Many (List Nat)
+  | [] => do
+    let list ← get
+    guard (goal == 0 && list.length > 0 && list.length % 2 == 0)
+    pure list
+  | x :: xs =>
+    if x > goal then
+      evenAddsTo goal xs
+    else
+      evenAddsTo goal xs <|> do
+        modify (·.concat x)
+        evenAddsTo (goal - x) xs
+
+/--
+info:
+[7, 8]
+[6, 9]
+[5, 10]
+[2, 3, 4, 6]
+[1, 3, 5, 6]
+[1, 3, 4, 7]
+[1, 2, 5, 7]
+[1, 2, 4, 8]
+[1, 2, 3, 9]
+-/
+#guard_msgs in
+#eval ((evenAddsTo 15 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).run' []).takeAll.print
