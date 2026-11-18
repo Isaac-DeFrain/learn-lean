@@ -934,3 +934,229 @@ info:
 -/
 #guard_msgs in
 #eval ((evenAddsTo 15 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).run' []).takeAll.print
+
+-- ## 6.4 More `do` Features
+
+-- ### 6.4.1 Single-Branched `if`
+
+-- common pattern is to carry out a side effect only if some condition is met
+
+def countLetters' (str : String) : StateT LetterCounts (Except LetterCounts.Err) Unit :=
+  let rec loop (chars : List Char) := do
+    match chars with
+    | [] => pure ()
+    | c :: cs =>
+      if c.isAlpha then
+        if vowels.contains c then
+          modify fun st => {st with vowels := st.vowels + 1}
+        else if consonants.contains c then
+          modify fun st => {st with consonants := st.consonants + 1}
+      else throw <| .notALetter c
+      loop cs
+  loop str.toList
+
+example : countLetters = countLetters' := by
+  funext s
+  show countLetters.loop s.toList = countLetters'.loop s.toList
+  induction s.toList with
+  | nil => rfl
+  | cons _ _ ih =>
+    simp only [countLetters.loop, countLetters'.loop, ih]
+
+def count [Monad m] [MonadState Nat m] (p : α → m Bool) (l : List α) : m Unit := do
+  if let x :: xs := l then
+    if ← p x then
+      modify (· + 1)
+    count p xs
+
+-- `if not E then STMT ...` can be written `unless E do STMT ...`
+
+def countNot [Monad m] [MonadState Nat m] (p : α → m Bool) (l : List α) : m Unit := do
+  if let x :: xs := l then
+    unless ← p x do
+      modify (· + 1)
+    count p xs
+
+-- ### 6.4.2 Early Return
+
+-- List.find?
+def find? (p : α → Bool) : List α → Option α
+  | [] => failure
+  | x :: xs => do
+    if p x then return x
+    find? p xs
+
+-- under the hood, early return uses the `ExceptT` monad transformer
+
+def runCatch [Monad m] (action : ExceptT α m α) : m α := do
+  match ← action with
+  | .ok x | .error x => pure x
+
+-- find? is equivalent to this
+def find?' (p : α → Bool) : List α → Option α
+  | [] => failure
+  | x :: xs =>
+    runCatch do
+      if p x then throw x
+      monadLift <| find? p xs
+
+-- ### 6.4.2 Loops
+
+-- #### 6.4.2.1 Looping with `ForM`
+
+-- type class for looping over a container type
+#print ForM
+-- class ForM.{u, v, w₁, w₂} (m : Type u → Type v) (γ : Type w₁) (α : outParam (Type w₂)) : Type (max (max v w₁) w₂)
+-- number of parameters: 3
+-- fields:
+--   ForM.forM : γ → (α → m PUnit) → m PUnit
+-- constructor:
+--   ForM.mk.{u, v, w₁, w₂} {m : Type u → Type v} {γ : Type w₁} {α : outParam (Type w₂)}
+--     (forM : γ → (α → m PUnit) → m PUnit) : ForM m γ α
+
+#print List.forM
+-- protected def List.forM.{u, v, w} : {m : Type u → Type v} →
+--   [Monad m] → {α : Type w} → List α → (α → m PUnit) → m PUnit :=
+-- fun {m} [Monad m] {α} as f => List.brecOn as (List.forM._f f)
+
+instance [Monad m] : ForM m (List α) α where
+  forM := List.forM
+
+def Many.forM [Monad m] : Many α → (α → m PUnit) → m PUnit
+  | .none, _ => pure ()
+  | .more x xs, action => do
+    action x
+    forM (xs ()) action
+
+instance [Monad m] : ForM m (Many α) α where
+  forM := Many.forM
+
+-- `ForM` supports non-polymorphic types
+
+structure AllLessThan where
+  num : Nat
+
+def AllLessThan.forM [Monad m] (coll : AllLessThan) (action : Nat → m Unit) : m Unit :=
+  let rec countdown : Nat → m Unit
+    | 0 => pure ()
+    | n + 1 => do
+      action n
+      countdown n
+  countdown coll.num
+
+instance [Monad m] : ForM m AllLessThan Nat where
+  forM := AllLessThan.forM
+
+/-- info: 43210 -/
+#guard_msgs in
+#eval forM { num := 5 : AllLessThan } IO.print
+
+-- example of `ForM` instance that works only in a particular monad
+
+structure LinesOf where
+  stream : IO.FS.Stream
+
+partial def LinesOf.forM (readFrom : LinesOf) (action : String → IO Unit) : IO Unit := do
+  let line ← readFrom.stream.getLine
+  if line.isEmpty then return ()
+  action line
+  forM readFrom action
+
+instance : ForM IO LinesOf String where
+  forM := LinesOf.forM
+
+-- #### 6.4.3.2 Stopping Iteration
+
+def OptionT.exec [Applicative m] (action : OptionT m α) : m Unit :=
+  action *> pure ()
+
+-- failure in the `OptionT` instance of `Alternative` can be used to terminate looping early
+def countToThree (n : Nat) : IO Unit :=
+  let nums : AllLessThan := ⟨n + 1⟩
+  OptionT.exec <| forM nums fun i =>
+    if i < 3 then failure else IO.print i
+
+/-- info: 76543 -/
+#guard_msgs in
+#eval countToThree 7
+
+-- easier to read
+
+instance [Monad m] : ForIn m AllLessThan Nat where
+  forIn := ForM.forIn
+
+def countToThree' (n : Nat) : IO Unit :=
+  let nums : AllLessThan := ⟨n + 1⟩
+  for i in nums do
+    if i < 3 then break
+    IO.print i
+
+/-- info: 76543 -/
+#guard_msgs in
+#eval countToThree' 7
+
+-- early return in for loops
+
+def find?'' (p : α → Bool) (xs : List α) : Option α := do
+  for x in xs do
+    if p x then return x
+  failure
+
+-- continue in for loops
+
+def find?''' (p : α → Bool) (xs : List α) : Option α := do
+  for x in xs do
+    if not <| p x then continue
+    return x
+  failure
+
+-- ranges for iteration:
+-- represented by a collection of types with a naming convention that describes their bounds
+-- each type's name begins with `R`, and the next two letters determine the lower and upper
+-- bounds, respectively:
+-- - `o` represents an open bound, where the bound value is not included
+-- - `c` represents a closed bound, where the bound value is included
+-- - `i` represents an infinite bound that does not restrict its range
+
+-- left-open, right-closed sequence
+example : Std.Roc Nat := 2<...=5
+
+-- left-infinite, right-open sequence
+example : Std.Rio Nat := *...5
+
+-- left-infinite, right-infinite sequence
+example : Std.Rii Nat := *...*
+
+/-- info: 234 -/
+#guard_msgs in
+#eval do for i in 2...5 do
+  IO.print i
+
+/-- info: 01234 -/
+#guard_msgs in
+#eval do for i in *...=4 do
+  IO.print i
+
+/-- info: abc -/
+#guard_msgs in
+#eval do for i in 'a'...'d' do
+  IO.print i
+
+-- for loops support iterating over multiple collections in parallel
+
+/-- info: (a, 0)(b, 1)(c, 2)(d, 3) -/
+#guard_msgs in
+#eval do for c in 'a'...'e', i in 0...=(42 : Nat) do
+  IO.print (c, i)
+
+/-- info:
+xs[0] = 1
+xs[1] = 2
+xs[2] = 3
+-/
+#guard_msgs in
+#eval let xs := #[1, 2, 3]
+  for h : i in 0...xs.size do
+    IO.println s!"xs[{i}] = {xs[i]}"
+
+-- the evidence `h : i in 0...xs.size` is required to prove safe access `xs[i]`
