@@ -97,10 +97,6 @@ def showFileName (file : String) : ConfigIO Unit := do
 def showDirName (dir : String) : ConfigIO Unit := do
   IO.println ((← read).dirName dir)
 
-def doList [Applicative f] : List α → (α → f Unit) → f Unit
-  | [], _ => pure ()
-  | x :: xs, action => action x *> doList xs action
-
 -- Lean has no way of knowing the directory tree is finite so `dirTree` must be partial def
 
 /--
@@ -117,8 +113,9 @@ partial def dirTree (path : System.FilePath) : StateConfigIO Unit := do
     showDirName name
     let contents ← path.readDir
     withReader (·.inDirectory) <|
-      doList (contents.qsort dirLT).toList fun d =>
-        dirTree d.path
+      let dirEntries := contents.qsort dirLT
+      for entry in dirEntries do
+        dirTree entry.path
 
 def printCount (count : EntryCount) : IO Unit :=
   IO.println s!"  Viewed {count.files} files in {count.dirs} directories."
