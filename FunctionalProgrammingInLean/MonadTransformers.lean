@@ -1160,3 +1160,152 @@ xs[2] = 3
     IO.println s!"xs[{i}] = {xs[i]}"
 
 -- the evidence `h : i in 0...xs.size` is required to prove safe access `xs[i]`
+
+-- ### 6.4.4 Mutable Variables
+
+-- local mutable variables in a `do`-block
+-- these local mutable variables desugar to code that's equivalent to `StateT`
+
+/-- info: 1 -/
+#guard_msgs in
+#eval do
+  let mut x := 0
+  x := x + 1
+  return x
+
+-- equivalent to using `StateT`
+
+/-- info: 1 -/
+#guard_msgs in
+#eval let block : StateT Nat Id Nat := do
+  modify (· + 1)
+  return ← get
+let (result, _) := block 0
+result
+
+-- local mutable variables work well with other features of `do`
+
+def ListCount (p : α → Bool) (xs : List α) : Nat := Id.run do
+  let mut found := 0
+  for x in xs do
+    if p x then found := found + 1
+  return found
+
+-- local mutable variables do not have the full power of imperative mutable variables
+
+/--
+error: Variable `found` cannot be mutated. Only variables declared using `let mut` can be mutated.
+      If you did not intend to mutate but define `found`, consider using `let found` instead
+-/
+#guard_msgs (error) in
+def ListCount' (p : α → Bool) (xs : List α) : Nat := Id.run do
+  let mut found := 0
+  let rec go : List α → Id Unit
+    | [] => pure ()
+    | y :: ys => do
+      if p y then found := found + 1
+      go ys
+  return found
+
+-- this is because the recursive function is written in the `Id` monad, and only the monad of
+-- the `do`-block in which the variable is introduced is transformed with `StateT`.
+
+-- ### 6.4.5 What counts as a do block?
+
+example : Id Unit := do
+  let mut x := 0
+  x := x + 1
+
+-- `let _ := do ...` not in the surrounding `do`-block
+
+/--
+error: Variable `x` cannot be mutated. Only variables declared using `let mut` can be mutated.
+      If you did not intend to mutate but define `x`, consider using `let x` instead
+-/
+#guard_msgs (error) in
+example : Id Unit := do
+  let mut x := 0
+  let other := do
+    x := x + 1
+  other
+
+-- `let _ ← do ...` same as surrounding `do`-block
+
+example : Id Unit := do
+  let mut x := 0
+  let other ← do
+    x := x + 1
+  pure other
+
+-- `do`-block as argument of function is not in the surrounding `do`-block
+
+/--
+error: Variable `x` cannot be mutated. Only variables declared using `let mut` can be mutated.
+      If you did not intend to mutate but define `x`, consider using `let x` instead
+-/
+#guard_msgs (error) in
+example : Id Unit := do
+  let mut x := 0
+  let addFour (y : Id Nat) := Id.run y + 4
+  addFour do
+    x := 5
+
+-- redundant `do` does not introduce a new block
+
+example : Id Unit := do
+  let mut x := 0
+  do x := x + 1
+
+-- branches of `if` or `match` are in the surrounding block
+
+example : Id Unit := do
+  let mut x := 0
+  if x < 2 then
+    x := x + 1
+
+example : Id Unit := do
+  let mut x := 0
+  unless x < 2 do
+    x := x + 1
+
+example : Id Unit := do
+  let b := true
+  let mut x := 0
+  match b with
+  | true => x := x + 1
+  | false => x := 17
+
+example : Id Unit := do
+  let mut x := 0
+  match 5 with
+  | 0 => do
+    x := x + 1
+  | n + 1 => do
+    x := n
+
+-- `unless` and `for` do not introduce a fresh `do`-block
+
+example : Id Unit := do
+  let mut x := 0
+  for y in 1...5 do
+   x := x + y
+
+example : Id Unit := do
+  let mut x := 0
+  unless x < 5 do
+    x := x + 1
+
+-- ### 6.4.6 Imperative or Functional Programming?
+
+-- monads and monad transformers allow this to be a matter of perspective
+
+-- ### 6.4.7 Exercises
+
+-- Rewrite `doug` to use `for` instead of the `doList` function.
+
+-- see /Doug.lean
+
+-- Are there other opportunities to use the features introduced in this section to improve
+-- the code? If so, use them!
+
+-- see /Doug.lean
