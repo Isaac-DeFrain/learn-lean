@@ -1309,3 +1309,53 @@ example : Id Unit := do
 -- the code? If so, use them!
 
 -- see /Doug.lean
+
+-- ## 6.5 Additional Conveniences
+
+-- ### 6.5.1 Pipe Operators
+
+example (e₂ : α → β) : (e₁ |> e₂) = e₂ e₁ := rfl
+example (e₂ : α → β) (e₃ : β → γ) : (e₁ |> e₂ |> e₃) = e₃ (e₂ e₁) := rfl
+
+example (e₁ : α → β) : (e₁ <| e₂) = e₁ e₂ := rfl
+example (e₁ : β → γ) (e₂ : α → β) : (e₁ <| e₂ <| e₃) = e₁ (e₂ e₃) := rfl
+
+-- pipeline dot operator
+#eval [1, 2, 3] |>.sum
+-- 6
+
+-- ### 6.5.2 Inifinite Loops
+
+-- `repeat` in `do`-block
+
+partial def dump (stream : IO.FS.Stream) : IO Unit := do
+  let buf ← stream.read 1000
+  if buf.isEmpty then
+    pure ()
+  else
+    let stdout ← IO.getStdout
+    stdout.write buf
+    dump stream
+
+-- `repeat` uses the underlying monad's `ForM` instance
+
+-- no longer declared `partial`
+def dump' (stream : IO.FS.Stream) : IO Unit := do
+  let stdout ← IO.getStdout
+  repeat do
+    let buf ← stream.read 1000
+    if buf.isEmpty then break
+    stdout.write buf
+
+#check (inferInstance : ForM IO _ (IO Unit))
+
+-- ### 6.5.3 While Loops
+
+-- `while` is syntax sugar for `repeat`
+
+def dump'' (stream : IO.FS.Stream) : IO Unit := do
+  let stdout ← IO.getStdout
+  let mut buf ← stream.read 1000
+  while !buf.isEmpty do
+    stdout.write buf
+    buf ← stream.read 1000

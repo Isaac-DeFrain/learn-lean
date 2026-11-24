@@ -28,7 +28,7 @@ Interlude: Propositions, Proofs, and Indexing
 4. [Monads](/FunctionalProgrammingInLean/Monads.lean)
 5. [Functors, Applicative Functors, and Monads](/FunctionalProgrammingInLean/FunctorsApplicativeMonads.lean)
 6. [Monad Transformers](/FunctionalProgrammingInLean/MonadTransformers.lean)
-7. Programming with Dependent Types
+7. [Programming with Dependent Types](/FunctionalProgrammingInLean/ProgrammingWithDependentTypes.lean)
 Interlude: Tactics, Induction, and Proofs
 8. Programming, Proving, and Performance
 9. Next Steps
