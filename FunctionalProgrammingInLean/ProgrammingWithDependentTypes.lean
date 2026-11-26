@@ -129,3 +129,173 @@ def Vect.take : (n : Nat) → Vect α (k + n) → Vect α n
 /-- info: Vect.cons "a" (Vect.nil) -/
 #guard_msgs in
 #eval Vect.push (.cons "a" .nil) "b" |>.take 1
+
+-- ## 7.2 The Universe Design Pattern
+
+-- Russell-style universe - `Sort u` directly describe other types
+
+-- Tarski-style universe - represent types as data and include an explicit function to interpret
+
+inductive NatOrBool where
+  | nat | bool  -- codes
+
+abbrev NatOrBool.asType : NatOrBool → Type
+  | nat => Nat
+  | bool => Bool
+
+def decode : (t : NatOrBool) → String → Option t.asType
+  | .nat, input => input.toNat?
+  | .bool, "true" => some true
+  | .bool, "false" => some false
+  | _, _ => none
+
+-- codes can be recursive
+
+inductive NestedPairs where
+  | nat : NestedPairs
+  | pair : NestedPairs → NestedPairs → NestedPairs
+
+abbrev NestedPairs.asType : NestedPairs → Type
+  | .nat => Nat
+  | .pair t1 t2 => t1.asType × t2.asType
+
+def NestedPairs.beq (t : NestedPairs) (x y : t.asType) : Bool :=
+  match t with
+  | .nat => x == y
+  | .pair t1 t2 => beq t1 x.fst y.fst && beq t2 x.snd y.snd
+
+instance {t : NestedPairs} : BEq t.asType where
+  beq := t.beq
+
+-- ### 7.2.1 Type Classes vs Universes
+
+-- type classes allow an open-ended collection of types to be used with an API
+
+-- universes a la Tarski restrict the API to be usable with only predetermined types
+
+-- ### 7.2.2 A Universe of Finite Types
+
+-- one way to represent finite types is by a universe:
+
+inductive Finite where
+  | empty : Finite
+  | unit : Finite
+  | bool : Finite
+  | opt : Finite → Finite
+  | pair : Finite → Finite → Finite
+  | arr : Finite → Finite → Finite
+deriving Repr
+
+abbrev Finite.asType : Finite → Type
+  | .empty => Empty
+  | .unit => Unit
+  | .bool => Bool
+  | .opt t => Option t.asType
+  | .pair t1 t2 => t1.asType × t2.asType
+  | .arr dom cod => dom.asType → cod.asType
+
+def List.product : List α → List β → List (α × β) :=
+  let rec prod : List α → List β → List (α × β)
+    | [], _ => []
+    | x :: xs, ys => ys.map (x, ·) |>.append <| prod xs ys
+  prod
+
+/-- info: [(0, 'a'), (0, 'b'), (1, 'a'), (1, 'b'), (2, 'a'), (2, 'b')] -/
+#guard_msgs in
+#eval [0, 1, 2].product ['a', 'b']
+
+mutual
+def Finite.enumerate : (t : Finite) → List t.asType
+  | .empty => []
+  | .unit => [()]
+  | .bool => [true, false]
+  | .opt t => t.enumerate.map some |>.concat none
+  | .pair t1 t2 => t1.enumerate.product t2.enumerate
+  | .arr dom cod => dom.functions cod.enumerate
+
+def Finite.functions : (t : Finite) → List α → List (t.asType → α)
+  | .empty, _ => []
+  | .unit, res => res.map fun r _ => r
+  | .bool, res =>
+    res.product res |>.map fun (r1, r2) => fun
+      | true => r1
+      | false => r2
+  | .opt t, res =>
+    t.functions res |>.product res |>.map fun (f, r) => fun
+      | none => r
+      | some x => f x
+  | .pair t1 t2, res =>
+    let fs := t1.functions <| t2.functions res
+    fs.map fun f (x, y) => f x y
+  | .arr t1 t2, res =>
+    let args := t1.enumerate
+    let base := res.map fun r _ => r
+    args.foldr (fun arg rest =>
+      (t2.functions rest).map fun more =>
+        fun f => more (f arg) f)
+      base
+end
+
+/-- info: 4 -/
+#guard_msgs in
+#eval Finite.bool.functions Finite.bool.enumerate |>.length
+
+def Finite.beq (t : Finite) (x y : t.asType) : Bool :=
+  match t with
+  | .empty | .unit => true
+  | .bool => x == y
+  | .opt t =>
+    match x, y with
+    | none, none => true
+    | some x, some y => t.beq x y
+    | _, _ => false
+  | .pair t1 t2 => t1.beq x.fst y.fst && t2.beq x.snd y.snd
+  | .arr dom cod =>
+    dom.enumerate.all fun arg => cod.beq (x arg) (y arg)
+
+-- ### 7.2.3 Exercises
+
+-- - Write a function that converts any value from a type coded for by `Finite` into a string.
+--   Functions should be represented as their tables.
+
+def Finite.toString (t : Finite) (x : t.asType) : String :=
+  match t with
+  | .empty => ""
+  | .unit => "()"
+  | .bool => ToString.toString x
+  | .opt t =>
+    match x with
+    | none => "none"
+    | some x => t.toString x
+  | .pair t1 t2 => s!"({t1.toString x.fst}, {t2.toString x.snd})"
+  | .arr t1 t2 =>
+    t1.enumerate.map (fun t => s!"{t1.toString t} ↦ {t2.toString (x t)}\n")
+    |>.foldr (· ++ ·) ""
+
+/-- info: "true ↦ true\nfalse ↦ false\n" -/
+#guard_msgs in
+#eval Finite.arr .bool .bool |>.toString fun
+  | true => true
+  | false => false
+
+instance {t : Finite} : ToString t.asType where
+  toString := t.toString
+
+-- - Add the empty type `Empty` to `Finite` and `Finite.beq`.
+
+-- see above
+
+instance {t : Finite} : BEq t.asType where
+  beq := t.beq
+
+/-- info: Finite.empty.beq : Finite.empty.asType → Finite.empty.asType → Bool -/
+#guard_msgs in
+#check (Finite.empty.beq : Empty → Empty → Bool)
+
+-- - Add `Option` to `Finite` and `Finite.beq`.
+
+-- see above
+
+/-- info: true -/
+#guard_msgs in
+#eval Finite.opt Finite.bool |>.beq (some false) (some false)
