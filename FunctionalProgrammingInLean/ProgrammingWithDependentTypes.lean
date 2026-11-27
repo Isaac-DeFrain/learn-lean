@@ -305,24 +305,60 @@ instance {t : Finite} : BEq t.asType where
 -- ### 7.3.1 A Universe of Data
 
 inductive DBType where
-  | bool | int | string
+  | bool | int | string | date
 deriving Repr
+
+structure Date where
+  day : Nat
+  month : Nat
+  year : Nat
+deriving BEq
 
 abbrev DBType.asType : DBType → Type
   | .bool => Bool
   | .int => Int
   | .string => String
+  | .date => Date
 
 #check ("abc" : DBType.string.asType)
+
+-- nullable
+structure NDBType where
+  underlying : DBType
+  nullable : Bool
+
+abbrev NDBType.asType (t : NDBType) : Type :=
+  match t.nullable with
+  | true => Option t.underlying.asType
+  | false => t.underlying.asType
 
 def DBType.beq (t : DBType) (x y : t.asType) : Bool :=
   match t with
   | .bool => x == y
   | .int => x == y
   | .string => x == y
+  | .date => x == y
+
+def NDBType.beq (t : NDBType) (x y : t.asType) : Bool :=
+  match t with
+  | ⟨.bool, true⟩ => x == y
+  | ⟨.bool, false⟩ => x == y
+  | ⟨.int, true⟩ => x == y
+  | ⟨.int, false⟩ => x == y
+  | ⟨.string, true⟩ => x == y
+  | ⟨.string, false⟩ => x == y
+  | ⟨.date, true⟩ => x == y
+  | ⟨.date, false⟩ => x == y
 
 instance {t : DBType} : BEq t.asType where
   beq := t.beq
+
+instance {t : NDBType} : BEq t.asType where
+  beq := t.beq
+
+-- coerce `DBType` to non-nullable `NDBType`
+instance : Coe DBType NDBType where
+  coe t := ⟨t, false⟩
 
 -- distinct from the instance on the codes
 
@@ -331,7 +367,11 @@ instance : BEq DBType where
     | .int, .int => true
     | .string, .string => true
     | .bool, .bool => true
+    | .date, .date => true
     | _, _ => false
+
+instance : Repr Date where
+  reprPrec d _ := s!"{d.year}/{d.month}/{d.day}"
 
 instance {t : DBType} : Repr t.asType where
   reprPrec :=
@@ -339,12 +379,13 @@ instance {t : DBType} : Repr t.asType where
     | .bool => reprPrec
     | .int => reprPrec
     | .string => reprPrec
+    | .date => reprPrec
 
 -- ### 7.3.2 Schemas and Tables
 
 structure Column where
   name : String
-  contains : DBType
+  contains : NDBType
 
 abbrev Schema := List Column
 
@@ -362,10 +403,10 @@ abbrev Table (s : Schema) := List <| Row s
 -- e.g. a diary of mountain peaks
 
 abbrev peak : Schema := [
-  ⟨"name", .string⟩,
-  ⟨"location", .string⟩,
-  ⟨"elevation", .int⟩,
-  ⟨"lastVisited", .int⟩
+  ⟨"name", ⟨.string, false⟩⟩,
+  ⟨"location", ⟨.string, false⟩⟩,
+  ⟨"elevation", ⟨.int, false⟩⟩,
+  ⟨"lastVisited", ⟨.int, false⟩⟩
 ]
 
 def mountainDiary : Table peak := [
@@ -423,12 +464,13 @@ instance : BEq (Row s) where
 
 -- schema can contain a column either at the beginning or later
 
-inductive HasCol : Schema → String → DBType → Type where
+inductive HasCol : Schema → String → NDBType → Type where
   | here : HasCol (⟨n, t⟩ :: _) n t
   | there : HasCol s n t → HasCol (_ :: s) n t
 
 -- "elevation" is the third column of `peak`
-example : HasCol peak "elevation" .int := .there <| .there .here
+open DBType in
+example : HasCol peak "elevation" int := .there <| .there .here
 
 -- gets the value in a specific column in a specific row
 def Row.get (row : Row s) (col : HasCol s n t) : t.asType :=
@@ -466,8 +508,9 @@ inductive Subschema : Schema → Schema → Type where
 example : Subschema [] peak := .nil
 example : Subschema [] peak := by constructor
 
+open DBType in
 abbrev travelDiary : Schema :=
-  [⟨"name", .string⟩, ⟨"location", .string⟩, ⟨"lastVisited", .int⟩]
+  [⟨"name", string⟩, ⟨"location", string⟩, ⟨"lastVisited", int⟩]
 
 example : Subschema travelDiary peak :=
   let name := .here                                 -- first column
@@ -480,12 +523,12 @@ example : Subschema travelDiary peak :=
 example : Subschema travelDiary peak := by repeat constructor
 
 -- four constructors
-example : Subschema [⟨"location", .string⟩] peak := .cons (.there .here) .nil
+example : Subschema [⟨"location", DBType.string⟩] peak := .cons (.there .here) .nil
 
-example : Subschema [⟨"name", .string⟩] peak := by repeat constructor
-example : Subschema [⟨"location", .string⟩] peak := by repeat constructor
-example : Subschema [⟨"elevation", .int⟩] peak := by repeat constructor
-example : Subschema [⟨"lastVisited", .int⟩] peak := by repeat constructor
+example : Subschema [⟨"name", DBType.string⟩] peak := by repeat constructor
+example : Subschema [⟨"location", DBType.string⟩] peak := by repeat constructor
+example : Subschema [⟨"elevation", DBType.int⟩] peak := by repeat constructor
+example : Subschema [⟨"lastVisited", DBType.int⟩] peak := by repeat constructor
 
 -- adding a column to the larger schema does not change a subschema
 
@@ -527,19 +570,28 @@ def Row.project (row : Row super) : (sub : Schema) → Subschema sub super → R
 
 -- all subexpressions refer to the same schema so this is a parameter
 
-inductive DBExpr (s : Schema) : DBType → Type where
+open DBType in
+inductive DBExpr (s : Schema) : NDBType → Type where
   | col (n : String) (loc : HasCol s n t) : DBExpr s t  -- reference to a column
-  | eq (e1 e2 : DBExpr s t) : DBExpr s .bool            -- compares e1, e2 for equality
-  | lt (e1 e2 : DBExpr s .int) : DBExpr s .bool             -- less than
-  | and (e1 e2 : DBExpr s .bool) : DBExpr s .bool           -- conjunction
+  | eq (e1 e2 : DBExpr s t) : DBExpr s bool             -- compares e1, e2 for equality
+  | lt (e1 e2 : DBExpr s int) : DBExpr s bool               -- less than
+  | and (e1 e2 : DBExpr s bool) : DBExpr s bool             -- conjunction
   | const : t.asType → DBExpr s t                       -- constant value
+  | before (e1 e2 : DBExpr s date) : DBExpr s bool
 
 macro "col!" n:term : term => `(DBExpr.col $n (by repeat constructor))
 
-def tallInDenmark : DBExpr peak .bool :=
+open DBType in
+def tallInDenmark : DBExpr peak bool :=
   let tall := .lt (.const 1000) (col! "elevation")
   let inDenmark := .eq (col! "location") (.const "Denmark")
   .and tall inDenmark
+
+def Date.before : Date → Date → Bool
+  | ⟨day1, month1, year1⟩, ⟨day2, month2, year2⟩ =>
+    if year1 < year2 then true
+    else if month1 < month2 then true
+    else day1 < day2
 
 def DBExpr.evaluate (row : Row s) : DBExpr s t → t.asType
   | .col _ loc => row.get loc
@@ -547,6 +599,7 @@ def DBExpr.evaluate (row : Row s) : DBExpr s t → t.asType
   | .lt e1 e2 => evaluate row e1 < evaluate row e2
   | .and e1 e2 => evaluate row e1 && evaluate row e2
   | .const v => v
+  | .before e1 e2 => (evaluate row e1).before (evaluate row e2)
 
 /-- info: false -/
 #guard_msgs in
@@ -589,11 +642,12 @@ def Schema.renameColumn : (s : Schema) → HasCol s n t → String → Schema
 def Column.prefix (pre : String) (c : Column) : Column :=
   {c with name := pre ++ "." ++ c.name}
 
+open DBType in
 inductive Query : Schema → Type where
   | table : Table s → Query s
   | union : Query s → Query s → Query s
   | diff : Query s → Query s → Query s
-  | select : Query s → DBExpr s .bool → Query s
+  | select : Query s → DBExpr s bool → Query s
   | project : Query s → (s' : Schema) → Subschema s' s → Query s'
   | product :
     Query s1 → Query s2 →
@@ -607,3 +661,163 @@ inductive Query : Schema → Type where
 
 -- use of an expression of type `Bool` where a type is expected triggers a coercion from
 -- `Bool` to `Prop`
+
+-- ### 7.3.5 Executing Queries
+
+-- the result of a query is a table
+-- this means that each operation in the query language requires a corresponding implementation
+-- that works with tables
+
+-- #### 7.3.5.1 Cartesian Product
+
+def addVal (v : c.contains.asType) (row : Row s) : Row (c :: s) :=
+  match s, row with
+  | [], () => v
+  | _::_, v' => (v, v')
+
+def Row.append (r1 : Row s1) (r2 : Row s2) : Row (s1 ++ s2) :=
+  match s1, r1 with
+  | [], () => r2
+  | [_], v => addVal v r2
+  | _::_::_, (v, r') => (v, r'.append r2)
+
+def Table.cartesianProduct (t1 : Table s1) (t2 : Table s2) : Table (s1 ++ s2) :=
+  t1.flatMap fun r => t2.map r.append
+
+-- #### 7.3.5.2 Difference
+
+def List.without [BEq α] (source exclude : List α) : List α :=
+  source.filter fun a => !(exclude.contains a)
+
+-- #### 7.3.5.3 Renaming Columns
+
+def Row.rename (c : HasCol s n t) (row : Row s) : Row (s.renameColumn c n') :=
+  match s, row, c with
+  | [_], r, .here => r
+  | _::_::_, r, .here => r
+  | _::_::_, (v, r), .there next => addVal v (r.rename next)
+
+-- while this funciton changes the type of its argument, the actual return value contains the
+-- same data as the original argument
+
+-- from a runtime perspective, `Row.rename` is just a slow identity function
+
+-- #### 7.3.5.4 Prefixing Column Names
+
+def prefixRow (row : Row s) : Row (s.map <| Column.prefix pre) :=
+  match s, row with
+  | [], _ => ()
+  | [_], v => v
+  | _::_::_, (v, r) => (v, prefixRow r)
+
+-- #### 7.3.5.5 Putting the Pieces Together
+
+def Query.exec : Query s → Table s
+  | .table t => t
+  | .union q1 q2 => exec q1 ++ exec q2
+  | .diff q1 q2 => (exec q1).without (exec q2)
+  | .select q e => (exec q).filter e.evaluate
+  | .project q _ sub => (exec q).map (·.project _ sub)
+  | .product q1 q2 _ => (exec q1).cartesianProduct (exec q2)
+  | .renameColumn q c _ _ => (exec q).map (·.rename c)
+  | .prefixWith _ q => (exec q).map prefixRow
+
+-- heights of mountains peaks with elevation greater than 500m
+
+open Query DBType in
+def example1 :=
+  table mountainDiary |>.select
+  (.lt (.const 500) (col! "elevation")) |>.project
+  [⟨"elevation", int⟩] (by repeat constructor)
+
+/-- info: [3637, 1519, 2549] -/
+#guard_msgs in
+#eval example1.exec
+
+-- to plan a sightseeing tour, we may want to match all pairs of peaks and waterfalls in the
+-- same location
+
+open DBType in
+abbrev waterfall : Schema := [
+  ⟨"name", string⟩,
+  ⟨"location", string⟩,
+  ⟨"lastVisited", int⟩
+]
+
+def waterfallDiary : Table waterfall := [
+  ("Multnomah Falls", "USA", 2018),
+  ("Shoshone Falls",  "USA", 2014)
+]
+
+open Query DBType in
+def example2 :=
+  let mountains := table mountainDiary |>.prefixWith "m"
+  let waterfalls := table waterfallDiary |>.prefixWith "w"
+  let final := [⟨"m.name", string⟩, ⟨"w.name", string⟩]
+  mountains.product waterfalls (by decide)
+  |>.select (.eq (col! "m.location") (col! "w.location"))
+  |>.project final (by repeat constructor)
+
+/-- info:
+[("Mount Nebo", "Multnomah Falls"),
+ ("Mount Nebo", "Shoshone Falls"),
+ ("Moscow Mountain", "Multnomah Falls"),
+ ("Moscow Mountain", "Shoshone Falls"),
+ ("Mount St. Helens", "Multnomah Falls"),
+ ("Mount St. Helens", "Shoshone Falls")]
+-/
+#guard_msgs in
+#eval example2.exec
+
+-- #### 7.3.5.6 Errors You May Meet
+
+-- ### 7.3.6 Exercises
+
+-- #### 7.3.6.1 Dates
+-- Define a structure to represent dates. Add it to the `DBType` universe and update the rest
+-- of the code accordingly. Provide the extra `DBExpr` constructors that seem to be necessary.
+
+-- see above
+
+-- #### 7.3.6.2 Nullable Types
+-- Add support for nullable columns to the query language by representing database types with
+-- `NDBType`
+
+-- Use this type in place of `DBType` in `Column` and `DBExpr`, and look up SQL's rules for
+-- NULL and comparison operators to determine the types of `DBExpr`'s constructors.
+
+-- see above
+
+-- #### 7.3.6.3. Experimenting with Tactics
+-- What is the result of asking Lean to find values of the following types using
+-- `by repeat constructor`? Explain why each gives the result that it does.
+
+-- `0` is a constructor
+example : Nat := by constructor
+example : Nat := 0
+
+-- `[]` is a constructor
+example : List α := by constructor
+example : List α := []
+
+-- `.cons 0 <| .cons 0 <| .cons 0 <| .cons 0 .nil` is a collection of constructors
+example : Vect Nat 4 := by repeat constructor
+example : Vect Nat 4 := .cons 0 <| .cons 0 <| .cons 0 <| .cons 0 .nil
+
+-- `()` is a constructor
+example : Row [] := by constructor
+example : Row [] := ()
+
+-- `0` is a constructor
+example : Row [⟨"price", DBType.int⟩] := by repeat constructor
+example : Row [⟨"price", DBType.int⟩] := 0
+
+-- `String` does not have a constructor
+/-- error: failed to compile definition, consider marking it as 'noncomputable' because it depends on 'List.utf8Encode', which is 'noncomputable' -/
+#guard_msgs in
+example : Row peak := by repeat constructor
+example : Row peak := ("", "", 0, 0)
+
+-- `.here` is a constructor
+example : HasCol [⟨"price", DBType.int⟩, ⟨"price", DBType.int⟩] "price" DBType.int := by constructor
+example : HasCol [⟨"price", DBType.int⟩, ⟨"price", DBType.int⟩] "price" DBType.int := .here
