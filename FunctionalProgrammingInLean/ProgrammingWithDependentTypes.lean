@@ -519,3 +519,43 @@ def Row.project (row : Row super) : (sub : Schema) → Subschema sub super → R
   | [], .nil => ()
   | [_], .cons c .nil => row.get c
   | _::_::_, .cons c cs => (row.get c, row.project _ cs)
+
+-- ### 7.3.3 Conditions and Selection
+
+-- projection removes unwanted columns from a table
+-- queries must also be able to remove unwanted rows - _selection_
+
+-- all subexpressions refer to the same schema so this is a parameter
+
+inductive DBExpr (s : Schema) : DBType → Type where
+  | col (n : String) (loc : HasCol s n t) : DBExpr s t  -- reference to a column
+  | eq (e1 e2 : DBExpr s t) : DBExpr s .bool            -- compares e1, e2 for equality
+  | lt (e1 e2 : DBExpr s .int) : DBExpr s .bool             -- less than
+  | and (e1 e2 : DBExpr s .bool) : DBExpr s .bool           -- conjunction
+  | const : t.asType → DBExpr s t                       -- constant value
+
+macro "col!" n:term : term => `(DBExpr.col $n (by repeat constructor))
+
+def tallInDenmark : DBExpr peak .bool :=
+  let tall := .lt (.const 1000) (col! "elevation")
+  let inDenmark := .eq (col! "location") (.const "Denmark")
+  .and tall inDenmark
+
+def DBExpr.evaluate (row : Row s) : DBExpr s t → t.asType
+  | .col _ loc => row.get loc
+  | .eq e1 e2 => evaluate row e1 == evaluate row e2
+  | .lt e1 e2 => evaluate row e1 < evaluate row e2
+  | .and e1 e2 => evaluate row e1 && evaluate row e2
+  | .const v => v
+
+/-- info: false -/
+#guard_msgs in
+#eval tallInDenmark.evaluate ("Valby Bakke", "Denmark", 31, 2023)
+
+/-- info: true -/
+#guard_msgs in
+#eval tallInDenmark.evaluate ("Fictional mountain", "Denmark", 1230, 2023)
+
+/-- info: false -/
+#guard_msgs in
+#eval tallInDenmark.evaluate ("Mount Borah", "USA", 3859, 1996)
