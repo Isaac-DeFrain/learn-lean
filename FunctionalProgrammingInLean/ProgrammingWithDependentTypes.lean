@@ -559,3 +559,51 @@ def DBExpr.evaluate (row : Row s) : DBExpr s t → t.asType
 /-- info: false -/
 #guard_msgs in
 #eval tallInDenmark.evaluate ("Mount Borah", "USA", 3859, 1996)
+
+-- ### 7.3.4 Queries
+
+-- based on relational algebra
+
+-- 1. The union of two expressions that have the same schema combines the rows that result
+--    from two queries
+-- 2. The difference of two expressions that have the same schema removes rows found in the
+--    second result from the rows in the first result
+-- 3. Selection by some criterion filters the result of a query according to an expression
+-- 4. Projection into a subschema, removing columns from the result of a query
+-- 5. Cartesian product, combining every row from one query with every row from another
+-- 6. Renaming a column in the result of a query, which modifies its schema
+-- 7. Prefixing all columns in a query with a name
+
+-- queries are represented by an indexed family
+
+def disjoint [BEq α] (xs ys : List α) : Bool :=
+  !xs.any ys.contains && !ys.any xs.contains
+
+def Schema.columnNames (s : Schema) : List String :=
+  s.map Column.name
+
+def Schema.renameColumn : (s : Schema) → HasCol s n t → String → Schema
+  | c :: cs, .here, n' => {c with name := n'} :: cs
+  | c :: cs, .there next, n' => c :: renameColumn cs next n'
+
+def Column.prefix (pre : String) (c : Column) : Column :=
+  {c with name := pre ++ "." ++ c.name}
+
+inductive Query : Schema → Type where
+  | table : Table s → Query s
+  | union : Query s → Query s → Query s
+  | diff : Query s → Query s → Query s
+  | select : Query s → DBExpr s .bool → Query s
+  | project : Query s → (s' : Schema) → Subschema s' s → Query s'
+  | product :
+    Query s1 → Query s2 →
+    disjoint s1.columnNames s2.columnNames →
+    Query (s1 ++ s2)
+  | renameColumn :
+    Query s → (c : HasCol s n t) → (n' : String) →
+    !(s.columnNames.contains n') →
+    Query (s.renameColumn c n')
+  | prefixWith : (n : String) → Query s → Query (s.map <| .prefix n)
+
+-- use of an expression of type `Bool` where a type is expected triggers a coercion from
+-- `Bool` to `Prop`
