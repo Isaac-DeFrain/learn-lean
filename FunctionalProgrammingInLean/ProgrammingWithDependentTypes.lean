@@ -299,3 +299,223 @@ instance {t : Finite} : BEq t.asType where
 /-- info: true -/
 #guard_msgs in
 #eval Finite.opt Finite.bool |>.beq (some false) (some false)
+
+-- ## 7.3 Worked Example: Typed Queries
+
+-- ### 7.3.1 A Universe of Data
+
+inductive DBType where
+  | bool | int | string
+deriving Repr
+
+abbrev DBType.asType : DBType → Type
+  | .bool => Bool
+  | .int => Int
+  | .string => String
+
+#check ("abc" : DBType.string.asType)
+
+def DBType.beq (t : DBType) (x y : t.asType) : Bool :=
+  match t with
+  | .bool => x == y
+  | .int => x == y
+  | .string => x == y
+
+instance {t : DBType} : BEq t.asType where
+  beq := t.beq
+
+-- distinct from the instance on the codes
+
+instance : BEq DBType where
+  beq
+    | .int, .int => true
+    | .string, .string => true
+    | .bool, .bool => true
+    | _, _ => false
+
+instance {t : DBType} : Repr t.asType where
+  reprPrec :=
+    match t with
+    | .bool => reprPrec
+    | .int => reprPrec
+    | .string => reprPrec
+
+-- ### 7.3.2 Schemas and Tables
+
+structure Column where
+  name : String
+  contains : DBType
+
+abbrev Schema := List Column
+
+-- schema can be seen as a universe that describes rows in a table
+
+abbrev Row : Schema → Type
+  | [] => Unit
+  | [col] => col.contains.asType
+  | col :: cols => col.contains.asType × Row cols
+
+-- a table is a list of rows that share a schema
+
+abbrev Table (s : Schema) := List <| Row s
+
+-- e.g. a diary of mountain peaks
+
+abbrev peak : Schema := [
+  ⟨"name", .string⟩,
+  ⟨"location", .string⟩,
+  ⟨"elevation", .int⟩,
+  ⟨"lastVisited", .int⟩
+]
+
+def mountainDiary : Table peak := [
+  ("Mount Nebo",       "USA",     3637, 2013),
+  ("Moscow Mountain",  "USA",     1519, 2015),
+  ("Himmelbjerget",    "Denmark",  147, 2004),
+  ("Mount St. Helens", "USA",     2549, 2010)
+]
+
+-- #### 7.3.2.1 Recursion and Universes, Revisited
+
+-- the convenience of structuring rows as tuples comes at a cost
+
+/--
+error: Type mismatch
+  (v1, r1')
+has type
+  ?m.12 × ?m.13
+but is expected to have type
+  Row (head✝ :: tail✝)
+-/
+#guard_msgs in
+def Row.beq' (r1 r2 : Row s) : Bool :=
+  match s with
+  | [] => true
+  | _::_ =>
+    match r1, r2 with
+    | (v1, r1'), (v2, r2') =>
+      v1 == v2 && bEq r1' r2'
+
+-- need to refine the type of rows further
+
+def Row.beq (r1 r2 : Row s) : Bool :=
+  match s with
+  | [] => true
+  | [_] => r1 == r2
+  | _::_::_ =>
+    match r1, r2 with
+    | (v1, r1'), (v2, r2') =>
+      v1 == v2 && r1'.beq r2'
+
+instance : BEq (Row s) where
+  beq := Row.beq
+
+-- Unlike in other contexts, functions that occur in types cannot be considered only in terms
+-- of their input/output behavior. Programs that use these types will find themselves forced
+-- to mirror the algorithm used in the type-level function so that their structure matches the
+-- pattern-matching and recursive behavior of the type. A big part of the skill of programming
+-- with dependent types is the selection of appropriate type-level functions with the right
+-- computational behavior.
+
+-- #### 7.3.2.2 Column Pointers
+
+-- some queries only make sense if a schema contains a particular column
+
+-- schema can contain a column either at the beginning or later
+
+inductive HasCol : Schema → String → DBType → Type where
+  | here : HasCol (⟨n, t⟩ :: _) n t
+  | there : HasCol s n t → HasCol (_ :: s) n t
+
+-- "elevation" is the third column of `peak`
+example : HasCol peak "elevation" .int := .there <| .there .here
+
+-- gets the value in a specific column in a specific row
+def Row.get (row : Row s) (col : HasCol s n t) : t.asType :=
+  match s, col, row with
+  | [_], .here, v => v
+  | _::_::_, .here, (v, _) => v
+  | _::_::_, .there next, (_, r) => r.get next
+
+-- `HasCol s n t` guarantees the column exists in the schema so we don't return an `Option`
+
+-- `HasCol` plays two roles:
+-- 1. It serves as _evidence_ that a column with a particular name and type exists in a schema.
+-- 2. It serves as _data_ that can be used to find the value associated with the column in a row.
+
+-- #### 7.3.2.3 Subschemas
+
+-- _project_ a table or row into a smaller schema, i.e. a subschema
+-- every column in a subschema must be present in the larger schema
+
+-- the ways in which a schema can be a subschema of another can be defined as an indexed family
+
+-- `nil` - empty schema is a subschema of every schema
+-- `cons` - if the smaller schema has a column, then that column must be in the larger schema and
+-- all the rest of the columns in the subschema must also be a subschema of the larger one
+
+inductive Subschema : Schema → Schema → Type where
+  | nil : Subschema [] super
+  | cons :
+      HasCol super n t →
+      Subschema sub super →
+      Subschema (⟨n, t⟩ :: sub) super -- it makes sense to read this function type backwards
+
+-- `Subschema` assigns each column in the subschema a pointer to its location in the larger one
+
+example : Subschema [] peak := .nil
+example : Subschema [] peak := by constructor
+
+abbrev travelDiary : Schema :=
+  [⟨"name", .string⟩, ⟨"location", .string⟩, ⟨"lastVisited", .int⟩]
+
+example : Subschema travelDiary peak :=
+  let name := .here                                 -- first column
+  let location := .there .here                      -- second column
+  let lastVisited := .there (.there (.there .here)) -- third column
+  .cons name
+    <| .cons location
+    <| .cons lastVisited .nil
+
+example : Subschema travelDiary peak := by repeat constructor
+
+-- four constructors
+example : Subschema [⟨"location", .string⟩] peak := .cons (.there .here) .nil
+
+example : Subschema [⟨"name", .string⟩] peak := by repeat constructor
+example : Subschema [⟨"location", .string⟩] peak := by repeat constructor
+example : Subschema [⟨"elevation", .int⟩] peak := by repeat constructor
+example : Subschema [⟨"lastVisited", .int⟩] peak := by repeat constructor
+
+-- adding a column to the larger schema does not change a subschema
+
+def Subschema.addColumn :
+    Subschema sub super →
+    Subschema sub (c :: super)
+  | .nil => .nil
+  | .cons col sub' => .cons (.there col) sub'.addColumn
+
+-- a subschema describes where to find each column of the smaller schema in the larger one
+
+-- `Subschema` defines a (relfexive, transitive) relation between schemas
+
+def Subschema.reflexive : (s : Schema) → Subschema s s
+  | [] => .nil
+  | _ :: cs => .cons .here (reflexive cs).addColumn
+
+def Subschema.hasCol : Subschema sub super → HasCol sub n t → HasCol super n t
+  | .cons col _, .here => col
+  | .cons _ sub', .there col' => sub'.hasCol col'
+
+def Subschema.transitive : Subschema s t → Subschema t u → Subschema s u
+  | .nil, _ => .nil
+  | .cons col sub, sub' => .cons (sub'.hasCol col) (sub.transitive sub')
+
+-- #### 7.3.2.4 Projecting Rows
+
+-- given that `sub` is a subschema of `super`, a row in `super` can be projected to a row in `sub`
+
+def Row.project (row : Row super) : (sub : Schema) → Subschema sub super → Row sub
+  | [], .nil => ()
+  | [_], .cons c .nil => row.get c
+  | _::_::_, .cons c cs => (row.get c, row.project _ cs)
